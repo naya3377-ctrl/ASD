@@ -16,8 +16,12 @@ def run():
         return run_primary(relay)
     except (OSError, RuntimeError, ValueError) as exc:
         from PySide6.QtWidgets import QApplication, QMessageBox
+        from .instance import OlderReaderRunning
         app = QApplication.instance() or QApplication(sys.argv)
-        QMessageBox.warning(None, '윤DF · 파일 열기', str(exc))
+        if isinstance(exc, OlderReaderRunning):
+            QMessageBox.information(None, '윤DF 업데이트', str(exc))
+        else:
+            QMessageBox.warning(None, '윤DF · 파일 열기', str(exc))
         return 1
     finally:
         if relay:
@@ -51,7 +55,8 @@ def run_primary(relay):
     app.setApplicationName("YoonDF")
     app.setApplicationDisplayName("윤DF")
     app.setOrganizationName("Bichaek")
-    app.setApplicationVersion("0.9.6")
+    from . import __version__
+    app.setApplicationVersion(__version__)
     app.setFont(QFont("Malgun Gothic" if os.name == "nt" else "Noto Sans CJK KR", 10))
     root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent.parent))
     app.setWindowIcon(QIcon(str(root / "assets" / "icon.svg")))

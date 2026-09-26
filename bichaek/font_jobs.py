@@ -80,10 +80,16 @@ def run_job(payload, timeout=FONT_TIMEOUT):
         request.write_bytes(pickle.dumps(payload, protocol=5))
         args = ([sys.executable, '--yoondf-font-job'] if getattr(sys, 'frozen', False)
                 else [sys.executable, '-m', 'bichaek.font_jobs'])
-        run = subprocess.Popen(args+[str(request), str(response)],
-                cwd=Path(__file__).resolve().parent.parent, stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
+        errors = open(Path(folder)/'stderr.txt', 'wb')
+        try:
+            run = subprocess.Popen(args+[str(request), str(response)],
+                    cwd=Path(__file__).resolve().parent.parent, stdin=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL, stderr=errors,
+                    creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
+        except OSError as exc:
+            errors.close()
+            _log_failure(args, None, str(exc).encode())
+            raise ValueError('글꼴 처리기를 시작하지 못했어요. 오류 로그를 보내 주세요.') from exc
         deadline = time.monotonic()+timeout
         try:
             while run.poll() is None:
@@ -97,11 +103,21 @@ def run_job(payload, timeout=FONT_TIMEOUT):
         finally:
             if run.poll() is None: run.kill()
             run.wait()
+            errors.close()
         if run.returncode or not response.is_file():
+            _log_failure(args, run.returncode, (Path(folder)/'stderr.txt').read_bytes())
             raise ValueError('글꼴 처리기가 종료됐어요. 다른 글꼴을 선택하거나 취소 후 다시 시도해 주세요.')
         result = pickle.loads(response.read_bytes())
         if 'error' in result: raise ValueError(result['error'])
         return result
+
+
+def _log_failure(args, code, stderr):
+    """Keep the helper's own error output; without it a Windows-only failure
+    shows up only as "the font helper stopped"."""
+    from .diagnostics import note
+    note('font helper failed: exit %s, command %r\n%s', code, args,
+         stderr[-4000:].decode('utf-8', 'replace') or '(no error output)')
 
 
 @lru_cache(maxsize=1)

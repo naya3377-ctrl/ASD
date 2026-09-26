@@ -9,7 +9,7 @@ ApplicationWindow {
     width: 1320; height: 900
     minimumWidth: presenting ? 0 : 1000; minimumHeight: presenting ? 0 : 640
     visibility: Window.Windowed
-    title: root.hasDocument ? (pdf.document.dirty ? "● " : "") + pdf.document.name + " — 윤DF" : "윤DF"
+    title: root.hasDocument ? (pdf.document.dirty ? "● " : "") + pdf.document.name + " — 윤DF " + Qt.application.version : "윤DF " + Qt.application.version
     color: Theme.canvas
     // Standard controls (dialogs, menus, fields) follow the same palette.
     palette.window: Theme.surface
@@ -1199,7 +1199,7 @@ ApplicationWindow {
     }
 
     Dialog {
-        id: aboutDialog; anchors.centerIn: parent; width: 650; height: 570; modal: true; title: "윤DF · 0.9.6"
+        id: aboutDialog; anchors.centerIn: parent; width: 650; height: 570; modal: true; title: "윤DF · " + Qt.application.version
         standardButtons: Dialog.Ok
         contentItem: ColumnLayout {
             Text { text: "Copyright © 2026 YoonDF contributors"; color: Theme.ink }
