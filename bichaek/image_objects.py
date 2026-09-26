@@ -93,7 +93,7 @@ class ImageObjectOperations:
         sx, sy = new.width/old.width, new.height/old.height
         native = fitz.Matrix(sx,0,0,sy,new.x0-old.x0*sx,new.y0-old.y0*sy)
         delta = p.transformation_matrix * native * ~p.transformation_matrix
-        with self.transaction():
+        with self.transaction(pages=[page]):
             p = self.pdf[page]
             if item['legacy']:
                 name, form = self._image_form(p, int(identifier.split(':')[1]))

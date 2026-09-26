@@ -33,6 +33,8 @@ def run_primary(relay):
     from .bridge import Images
     from .tabs import Documents
     from .external_open import ExternalOpenQueue
+    from .library import Library
+    from .icons import Icons
 
     preferences=QSettings("Bichaek","BichaekPDF")
     if preferences.value("graphicsMode","auto")=="software":
@@ -54,13 +56,18 @@ def run_primary(relay):
     root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent.parent))
     app.setWindowIcon(QIcon(str(root / "assets" / "icon.svg")))
     images = Images()
+    library = Library(preferences)
     documents = Documents(images)
+    documents.library = library
     external = ExternalOpenQueue(documents)
     engine = QQmlApplicationEngine()
     engine.addImageProvider("pages", images)
+    engine.addImageProvider("icon", Icons(root / "assets" / "icons"))
     engine.rootContext().setContextProperty("bridge", documents.activeBridge)
     engine.rootContext().setContextProperty("documents", documents)
     engine.rootContext().setContextProperty("externalRequests", external)
+    engine.rootContext().setContextProperty("library", library)
+    engine.rootContext().setContextProperty("iconTint", True)
     engine.load(QUrl.fromLocalFile(str(root / "ui" / "Main.qml")))
     if not engine.rootObjects():
         documents.shutdown()
@@ -74,6 +81,7 @@ def run_primary(relay):
     app.aboutToQuit.connect(launch_timer.stop)
     app.aboutToQuit.connect(external.timer.stop)
     app.aboutToQuit.connect(relay.stop)
+    app.aboutToQuit.connect(library.flush)
     app.aboutToQuit.connect(documents.shutdown)
     result = app.exec()
     # Explicitly destroy the QML engine while its context is still alive.

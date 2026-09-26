@@ -39,6 +39,9 @@ class Document(AnnotationOperations, ImageObjectOperations):
         self.undo_stack = []
         self.redo_stack = []
         self.pinned = set()
+        self.page_tokens = []
+        self._pending_tokens = None
+        self._editor_font_cache = {}
         self.temp = tempfile.TemporaryDirectory(prefix="bichaek-")
 
     def close(self):
@@ -73,6 +76,8 @@ class Document(AnnotationOperations, ImageObjectOperations):
         self.pinned.clear()
         self._purge_snapshots()
         self.session = uuid.uuid4().hex
+        self.page_tokens = [self._token() for _ in range(len(self.pdf))]
+        self._editor_font_cache = {}
         self.revision += 1
         self.sequence = self.state_id = self.saved_id = 0
         return self.info()
@@ -93,12 +98,17 @@ class Document(AnnotationOperations, ImageObjectOperations):
                 "editable": self.editable(), "annotatable": self.annotatable(),
                 "printable": bool(self.owner_authenticated or self.pdf.permissions & fitz.PDF_PERM_PRINT),
                 "printHighQuality": bool(self.owner_authenticated or self.pdf.permissions & fitz.PDF_PERM_PRINT_HQ),
-                "size": list(self.pdf[0].rect)[2:]}
+                "size": list(self.pdf[0].rect)[2:], "pageTokens": list(self.page_tokens)}
+
+    @staticmethod
+    def _token():
+        return uuid.uuid4().hex[:12]
 
     def _snapshot(self):
         name = str(Path(self.temp.name) / (uuid.uuid4().hex + ".pdf"))
         self.pdf.save(name, garbage=0, encryption=fitz.PDF_ENCRYPT_KEEP)
-        return name, self.state_id
+        # Page tokens travel with history so undo/redo can reuse rendered pages.
+        return name, self.state_id, list(self.page_tokens)
 
     def _restore(self, snapshot):
         new = fitz.open(snapshot[0])
@@ -108,6 +118,8 @@ class Document(AnnotationOperations, ImageObjectOperations):
         self.pdf.close()
         self.pdf = new
         self.state_id = snapshot[1]
+        tokens = snapshot[2] if len(snapshot) > 2 else None
+        self.page_tokens = list(tokens) if tokens and len(tokens) == len(new) else [self._token() for _ in range(len(new))]
 
     def _trim_history(self):
         while len(self.undo_stack) > 1 and (
@@ -128,11 +140,15 @@ class Document(AnnotationOperations, ImageObjectOperations):
                     pass
 
     @contextmanager
-    def transaction(self, annotation=False):
+    def transaction(self, annotation=False, pages=None):
+        """pages: indices whose appearance changes. Operations that reorder,
+        insert or delete pages set self._pending_tokens instead. Without
+        either, every page is treated as changed."""
         self.require()
         if not (self.annotatable() if annotation else self.editable()):
             raise DocumentError("이 PDF는 편집 권한이 제한되어 있어요.")
         before = self._snapshot()
+        self._pending_tokens = None
         try:
             yield
         except Exception:
@@ -141,6 +157,14 @@ class Document(AnnotationOperations, ImageObjectOperations):
             # Windows may hold the restored snapshot open; retain until cleanup.
             raise
         else:
+            pending, self._pending_tokens = self._pending_tokens, None
+            if pending is not None and len(pending) == len(self.pdf):
+                self.page_tokens = pending
+            elif pages is not None and len(self.page_tokens) == len(self.pdf):
+                for index in set(pages):
+                    if 0 <= index < len(self.page_tokens): self.page_tokens[index] = self._token()
+            else:
+                self.page_tokens = [self._token() for _ in range(len(self.pdf))]
             self.undo_stack.append(before)
             for entry in self.redo_stack:
                 try:
@@ -189,7 +213,8 @@ class Document(AnnotationOperations, ImageObjectOperations):
         pix = display.get_pixmap(matrix=fitz.Matrix(scale,scale),alpha=False,colorspace=fitz.csRGB)
         metadata = {"width":pix.width,"height":pix.height,"stride":pix.stride,
                     "pageWidth":p.rect.width,"pageHeight":p.rect.height,
-                    "revision":self.revision,"session":self.session,"page":page}
+                    "revision":self.revision,"session":self.session,"page":page,
+                    "token":self.page_tokens[page] if page < len(self.page_tokens) else ""}
         return pix,metadata
 
     def render(self, page, width=1100):
@@ -294,9 +319,43 @@ class Document(AnnotationOperations, ImageObjectOperations):
             raise DocumentError("텍스트가 영역 안에 들어가지 않아요. 글자 크기를 줄이거나 영역 높이를 늘려 주세요. 변경은 적용하지 않았어요.")
 
     def editor_fonts(self, page, requests, source='original', path='', block_id=-1):
+        """Prepare display fonts for the inline editor.
+
+        Starting the isolated font process costs seconds on Windows, and the
+        editor asks again whenever typing adds a character. Reuse a prepared
+        program while it still covers the text, and remember characters a
+        request already proved unavailable, so only genuinely new work spawns
+        a job."""
         from .font_jobs import run_job, snapshot_fonts
-        result=run_job({'operation':'prepare','snapshot':snapshot_fonts(self.pdf,page),
-                       'requests':requests,'source':source,'path':path})['fonts']
+        token=self.page_tokens[page] if 0<=page<len(self.page_tokens) else ''
+        cache=self._editor_font_cache
+        if cache.get('stamp')!=(self.session,token):
+            cache.clear();cache['stamp']=(self.session,token)
+        result=[];misses={}
+        for name,text in requests.items():
+            key=(name,source,path)
+            entry=cache.get(key)
+            needed={ord(c) for c in text if not c.isspace()}
+            extra=needed-entry['covers'] if entry else None
+            # Reuse while the program covers the text, or while the only
+            # uncovered characters are ones an earlier job already found
+            # nowhere; typing does not start a new font process each time.
+            if entry and extra<=entry['lacking']:
+                result.append({'name':name,'data':entry['data'],'family':entry['family'],'error':'','partial':bool(extra)})
+            else:misses[name]=text
+        if misses:
+            prepared=run_job({'operation':'prepare','snapshot':snapshot_fonts(self.pdf,page),
+                              'requests':misses,'source':source,'path':path})['fonts']
+            for item in prepared:
+                key=(item['name'],source,path)
+                if not item['error']:
+                    try:covers=set(fitz.Font(fontbuffer=item['data']).valid_codepoints())
+                    except Exception:covers=set()
+                    needed={ord(c) for c in misses.get(item['name'],'') if not c.isspace()}
+                    old=cache.get(key)
+                    lacking=(old['lacking'] if old else set())|(needed-covers if item.get('partial') else set())
+                    cache[key]={'data':item['data'],'family':item['family'],'covers':covers,'lacking':lacking}
+                result.append(item)
         background=b''
         if block_id>=0:
             block=self.objects(page)['blocks'][block_id];rect=fitz.Rect(block['rect'])
@@ -317,7 +376,7 @@ class Document(AnnotationOperations, ImageObjectOperations):
         if any(a.type[0]==fitz.PDF_ANNOT_REDACT for a in p.annots() or []):raise DocumentError('적용 전 가림 표시를 먼저 정리해 주세요.')
         target=fitz.Rect(rect);bounds=p.rect*p.derotation_matrix
         if target.is_empty or not (bounds+(-.1,-.1,.1,.1)).contains(target):raise DocumentError('글이 페이지 밖으로 나가요. 편집 영역의 폭이나 글자 크기를 조정해 주세요.')
-        with self.transaction():
+        with self.transaction(pages=[page]):
             p=self.pdf[page];p.add_redact_annot(fitz.Rect(block['rect']),fill=False,cross_out=False)
             p.apply_redactions(images=0,graphics=0,text=0)
             if fragment:
@@ -363,7 +422,7 @@ class Document(AnnotationOperations, ImageObjectOperations):
         target = fitz.Rect(original)
         target.y1 = min((p.rect * p.derotation_matrix).y1,
                         target.y0 + max(original.height + 4, float(height or original.height + 6)))
-        with self.transaction():
+        with self.transaction(pages=[page]):
             p = self.pdf[page]
             # Physically remove text, preserving artwork and vector backgrounds.
             p.add_redact_annot(original, fill=False, cross_out=False)
@@ -372,7 +431,7 @@ class Document(AnnotationOperations, ImageObjectOperations):
         return self.info()
 
     def add_text(self, page, rect, text, size=14, color=0x202124, font_path=""):
-        with self.transaction():
+        with self.transaction(pages=[page]):
             p = self.pdf[page]
             self._insert_text(p, self.native_rect(p, rect), text, float(size), int(color), font_path, rotation=p.rotation)
         return self.info()
@@ -385,6 +444,8 @@ class Document(AnnotationOperations, ImageObjectOperations):
             with self.transaction():
                 # move_page's destination means insert-before in pre-move indices.
                 self.pdf.move_page(source, target if source > target else target + 1 if target < len(self.pdf)-1 else -1)
+                tokens = list(self.page_tokens); tokens.insert(target, tokens.pop(source))
+                self._pending_tokens = tokens
         return self.info()
 
     def move_pages(self, pages, target, revision=None):
@@ -404,6 +465,7 @@ class Document(AnnotationOperations, ImageObjectOperations):
                     if source != dest:
                         self.pdf.move_page(source,dest)
                         current.insert(dest,current.pop(source))
+                self._pending_tokens=[self.page_tokens[i] for i in order]
         result=self.info();result['movedSelection']=list(range(start,start+len(selected)))
         return result
 
@@ -415,10 +477,11 @@ class Document(AnnotationOperations, ImageObjectOperations):
             raise DocumentError("문서에 한 페이지 이상 남아 있어야 해요.")
         with self.transaction():
             self.pdf.delete_pages(pages)
+            self._pending_tokens = [t for i, t in enumerate(self.page_tokens) if i not in set(pages)]
         return self.info()
 
     def rotate(self, pages, angle=90):
-        with self.transaction():
+        with self.transaction(pages=[int(x) for x in pages]):
             for index in sorted(set(map(int, pages))):
                 p = self.pdf[index]
                 p.set_rotation((p.rotation + int(angle)) % 360)
@@ -432,13 +495,17 @@ class Document(AnnotationOperations, ImageObjectOperations):
             if not other.is_pdf or not len(other):
                 raise DocumentError("삽입할 PDF를 확인해 주세요.")
             with self.transaction():
+                before = len(self.pdf)
                 self.pdf.insert_pdf(other, start_at=int(at))
+                where = int(at) if 0 <= int(at) <= before else before
+                self._pending_tokens = (self.page_tokens[:where] + [self._token() for _ in range(len(self.pdf)-before)]
+                                        + self.page_tokens[where:])
         finally:
             other.close()
         return self.info()
 
     def add_image(self, page, rect, path):
-        with self.transaction():
+        with self.transaction(pages=[page]):
             p = self.pdf[page]
             p.insert_image(self.native_rect(p, rect), filename=path, keep_proportion=True, rotate=p.rotation)
             name, form = self._image_form(p, p.get_contents()[-1])
@@ -451,7 +518,7 @@ class Document(AnnotationOperations, ImageObjectOperations):
         words = [fitz.Rect(w[:4]) for w in p.get_text("words") if fitz.Rect(w[:4]).intersects(area)]
         if not words:
             raise DocumentError("영역 안에 선택 가능한 글자가 없어요. 스캔 문서는 OCR을 먼저 실행해 주세요.")
-        with self.transaction(annotation=True):
+        with self.transaction(annotation=True, pages=[page]):
             a = p.add_highlight_annot(words)
             self._new_annotation_info(a, "사용자", "", "#ffd54f", "형광펜")
         return self.info()
@@ -496,6 +563,26 @@ class Document(AnnotationOperations, ImageObjectOperations):
                 item.update(kind="unsupported")
             links.append(item)
         return links
+
+    def outline(self):
+        """Bookmarks for the reader sidebar. Page is 0-based, -1 if unresolved."""
+        self.require()
+        items = []
+        for entry in self.pdf.get_toc(simple=False):
+            level, title, page = entry[0], entry[1], entry[2] - 1
+            y = 0.0
+            dest = entry[3] if len(entry) > 3 and isinstance(entry[3], dict) else {}
+            point = dest.get("to")
+            if 0 <= page < len(self.pdf) and point is not None:
+                # MuPDF reports the target in unrotated page space (top-left
+                # origin). The reader scrolls in displayed space. Clamp so a
+                # malformed destination cannot scroll past the page.
+                p = self.pdf[page]
+                shown = fitz.Point(point) * p.rotation_matrix
+                y = min(max(0.0, float(shown.y)), float(p.rect.height))
+            items.append({"level": max(1, int(level)), "title": " ".join(str(title).split()) or "(제목 없음)",
+                          "page": page if 0 <= page < len(self.pdf) else -1, "y": y})
+        return {"items": items, "revision": self.revision, "session": self.session}
 
     def render_print(self, page, dpi=300):
         self.require()
@@ -625,7 +712,7 @@ class Document(AnnotationOperations, ImageObjectOperations):
 
     def ocr_snapshot(self):
         self.require()
-        path, _ = self._snapshot()
+        path = self._snapshot()[0]
         self.pinned.add(path)
         return {"path": path, "password": self.password,
                 "session": self.session, "revision": self.revision}
@@ -640,7 +727,7 @@ class Document(AnnotationOperations, ImageObjectOperations):
             raise DocumentError("OCR 중 문서가 바뀌어서 인식 결과를 적용하지 않았어요. 현재 문서에서 다시 실행해 주세요.")
         if not results:
             return self.info()
-        with self.transaction():
+        with self.transaction(pages=[item["page"] for item in results]):
             for item in results:
                 p = self.pdf[item["page"]]
                 layer = fitz.open(item["path"])

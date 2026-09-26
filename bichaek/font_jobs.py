@@ -53,11 +53,19 @@ def prepare(payload):
     source = FontSource(payload['snapshot']); result = []
     for name, text in payload['requests'].items():
         try:
-            data = (original_font(source, 0, name, text) if payload['source'] == 'original'
-                    else font_bytes(payload['path']) if payload['path'] else fitz.Font('korea').buffer)
-            if not has_text(data, text): raise ValueError('선택한 글꼴에 필요한 글자가 없어요. 다른 글꼴을 검색해 주세요.')
+            partial = False
+            if payload['source'] == 'original':
+                try: data = original_font(source, 0, name, text)
+                except ValueError:
+                    # No program covers every character. Keep the closest
+                    # original program; the editor shows only the missing
+                    # characters in a fallback font instead of refusing.
+                    data = original_font(source, 0, name, ''); partial = True
+            else:
+                data = font_bytes(payload['path']) if payload['path'] else fitz.Font('korea').buffer
+                partial = not has_text(data, text)
             prepared, family = qt_font(data)
-            result.append({'name': name, 'data': prepared, 'family': family, 'error': ''})
+            result.append({'name': name, 'data': prepared, 'family': family, 'error': '', 'partial': partial})
         except Exception as exc:
             result.append({'name': name, 'data': b'', 'family': '', 'error': str(exc)})
     return {'fonts': result}

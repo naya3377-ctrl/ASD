@@ -113,9 +113,10 @@ class Documents(QObject):
     closeApproved = Signal()
     showError = Signal(str)
 
-    def __init__(self, images):
+    def __init__(self, images, library=None):
         super().__init__()
         self.images = images
+        self.library = library
         self.hub = EngineHub()
         self._tabs = []
         self._tab_model = DocumentTabModel(self)
@@ -143,6 +144,14 @@ class Documents(QObject):
                 (Path(b.opening_path).name if getattr(b, "opening_path", "") else "새 문서"),
                 "path": b.document.get("path", getattr(b, "opening_path", "")),
                 "dirty": b.document.get("dirty", False), "busy": b.busy or b.ocrBusy}
+
+    @Slot(str)
+    def openRecent(self, path):
+        if not Path(path).is_file():
+            if self.library: self.library.forget(path)
+            self.showError.emit("파일을 찾지 못했어요. 옮겨졌거나 삭제되었을 수 있어요.\n" + path)
+            return
+        self.openPaths([path])
 
     @Property('QVariantList', notify=tabsChanged)
     def tabs(self): return [self.tab_data(b) for b in self._tabs]
@@ -194,6 +203,22 @@ class Documents(QObject):
         b.command("activate_document", priority=-2)
         self.activeChanged.emit()
         self.indexChanged.emit()
+
+    @Slot(int, int)
+    def moveTab(self, source, target):
+        """Drag a tab to a new position. The active document stays active."""
+        count = len(self._tabs)
+        if self._closing or not (0 <= source < count and 0 <= target < count) or source == target: return
+        # beginMoveRows wants the destination as an insert-before index.
+        if not self._tab_model.beginMoveRows(QModelIndex(), source, source, QModelIndex(), target + 1 if target > source else target):
+            return
+        active = self._tabs[self._index] if self._index >= 0 else None
+        self._tabs.insert(target, self._tabs.pop(source))
+        self._tab_model.endMoveRows()
+        if active is not None and self._tabs.index(active) != self._index:
+            self._index = self._tabs.index(active)
+            self.indexChanged.emit()
+        self.tabsChanged.emit()
 
     @Slot(int)
     def cycle(self, direction):

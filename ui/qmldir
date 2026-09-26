@@ -1,0 +1,13 @@
+singleton Theme 1.0 Theme.qml
+ActionButton 1.0 ActionButton.qml
+AnnotationEditor 1.0 AnnotationEditor.qml
+CommentsPanel 1.0 CommentsPanel.qml
+FontPicker 1.0 FontPicker.qml
+Icon 1.0 Icon.qml
+ImageHandles 1.0 ImageHandles.qml
+InlineTextEditor 1.0 InlineTextEditor.qml
+LegacyTextEditor 1.0 LegacyTextEditor.qml
+MergeDialog 1.0 MergeDialog.qml
+PresentationView 1.0 PresentationView.qml
+ScrollInput 1.0 ScrollInput.qml
+TextLayer 1.0 TextLayer.qml

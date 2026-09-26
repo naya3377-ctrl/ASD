@@ -37,14 +37,15 @@ def names_of(font):
     return family,style,full,sorted(aliases),sorted(exact)
 
 
-@lru_cache(maxsize=1)
-def installed_fonts():
+def _font_roots():
     if os.name=='nt':
-        roots=[Path(os.environ.get('WINDIR','C:/Windows'))/'Fonts',Path(os.environ.get('LOCALAPPDATA',''))/'Microsoft/Windows/Fonts']
-    else:
-        roots=[Path('/usr/share/fonts'),Path('/usr/local/share/fonts'),Path.home()/'.local/share/fonts',Path.home()/'.fonts',Path('/Library/Fonts'),Path('/System/Library/Fonts')]
+        return [Path(os.environ.get('WINDIR','C:/Windows'))/'Fonts',Path(os.environ.get('LOCALAPPDATA',''))/'Microsoft/Windows/Fonts']
+    return [Path('/usr/share/fonts'),Path('/usr/local/share/fonts'),Path.home()/'.local/share/fonts',Path.home()/'.fonts',Path('/Library/Fonts'),Path('/System/Library/Fonts')]
+
+
+def _font_paths():
     paths=set()
-    for root in roots:
+    for root in _font_roots():
         if root.is_dir():paths.update(p for p in root.rglob('*') if p.suffix.lower() in ('.ttf','.otf','.ttc','.otc') and p.is_file())
     if os.name=='nt':
         import winreg
@@ -57,19 +58,54 @@ def installed_fonts():
                             path=Path(value)
                             if path.is_absolute() and path.is_file():paths.add(path)
             except OSError:pass
-    result=[]
-    for path in sorted(paths):
+    return sorted(paths)
+
+
+def _catalog_file():
+    if os.name=='nt':base=Path(os.environ.get('LOCALAPPDATA',str(Path.home()/'AppData/Local')))/'YoonDF'
+    else:base=Path(os.environ.get('XDG_CACHE_HOME',str(Path.home()/'.cache')))/'yoondf'
+    return base/'font-catalog-v1.json'
+
+
+def _scan(path):
+    rows=[]
+    if path.suffix.lower() in ('.ttc','.otc'):
+        collection=TTCollection(path,lazy=True);faces=collection.fonts
+    else:collection=None;faces=[TTFont(path,lazy=True)]
+    try:
+        for index,font in enumerate(faces):
+            family,style,label,aliases,exact=names_of(font)
+            rows.append({'label':label,'name':label,'family':family,'style':style,'aliases':aliases,'exact':exact,
+                'key':str(path)+(f'#face={index}' if collection else '')})
+    finally:
+        if collection:collection.close()
+        else:faces[0].close()
+    return rows
+
+
+@lru_cache(maxsize=1)
+def installed_fonts():
+    """Installed faces. Parsed name tables are cached on disk per file size and
+    modification time, so each editor session no longer re-reads every font."""
+    import json
+    cache_path=_catalog_file()
+    try:cached=json.loads(cache_path.read_text(encoding='utf-8'))
+    except (OSError,ValueError):cached={}
+    if not isinstance(cached,dict):cached={}
+    fresh={};result=[]
+    for path in _font_paths():
         try:
-            if path.suffix.lower() in ('.ttc','.otc'):
-                collection=TTCollection(path,lazy=True);faces=collection.fonts
-            else:collection=None;faces=[TTFont(path,lazy=True)]
-            for index,font in enumerate(faces):
-                family,style,label,aliases,exact=names_of(font)
-                result.append({'label':label,'name':label,'family':family,'style':style,'aliases':aliases,'exact':exact,
-                    'key':str(path)+(f'#face={index}' if collection else '')})
-            if collection:collection.close()
-            else:faces[0].close()
+            stat=path.stat();stamp=f'{stat.st_size}:{stat.st_mtime_ns}'
+            entry=cached.get(str(path))
+            if isinstance(entry,dict) and entry.get('stamp')==stamp and isinstance(entry.get('rows'),list):rows=entry['rows']
+            else:rows=_scan(path)
+            fresh[str(path)]={'stamp':stamp,'rows':rows};result.extend(rows)
         except Exception:continue
+    if fresh!=cached:
+        try:
+            cache_path.parent.mkdir(parents=True,exist_ok=True)
+            temp=cache_path.with_suffix('.tmp');temp.write_text(json.dumps(fresh,ensure_ascii=False),encoding='utf-8');os.replace(temp,cache_path)
+        except OSError:pass
     return sorted(result,key=lambda r:(r['label'].casefold(),r['key']))
 
 

@@ -136,7 +136,7 @@ class AnnotationOperations:
                     count += len(chars)
         if not quads or start < 0 or end > count:
             raise ValueError("먼저 주석을 남길 글자를 드래그해 선택해 주세요.")
-        with self.transaction(annotation=True):
+        with self.transaction(annotation=True, pages=[page]):
             a = getattr(p, MARKUP[kind])(quads)
             self._new_annotation_info(a, author, content, color, LABELS[a.type[1]])
         return self._annotation_result(page, a)
@@ -148,7 +148,7 @@ class AnnotationOperations:
             raise ValueError("메모 위치를 확인해 주세요.")
         p = self.pdf[page]
         point = fitz.Point(point) * p.derotation_matrix
-        with self.transaction(annotation=True):
+        with self.transaction(annotation=True, pages=[page]):
             a = p.add_text_annot(point, content, icon="Comment")
             self._new_annotation_info(a, author, content, color, "메모")
         return self._annotation_result(page, a)
@@ -159,7 +159,7 @@ class AnnotationOperations:
         item = next(x for x in self.annotations_page(page)["items"] if x["id"] == identifier)
         if not item["editable"]: raise ValueError("이 주석은 읽기 전용이거나 지원하지 않는 형식이에요.")
         if color is not None: color_rgb(color)
-        with self.transaction(annotation=True):
+        with self.transaction(annotation=True, pages=[page]):
             old = a.info
             a.set_info(content=content, title=author, modDate=pdf_date())
             if content != old.get("content", ""):
@@ -181,7 +181,7 @@ class AnnotationOperations:
         p, parent = self._annotation(page, identifier)
         item = next(x for x in self.annotations_page(page)["items"] if x["id"] == identifier)
         if not item["editable"]: raise ValueError("이 주석에는 답글을 추가할 수 없어요.")
-        with self.transaction(annotation=True):
+        with self.transaction(annotation=True, pages=[page]):
             a = p.add_text_annot(parent.rect.tl, content, icon="Comment")
             self._new_annotation_info(a, author, content, item["color"], "답글")
             a.set_irt_xref(parent.xref)
@@ -199,7 +199,7 @@ class AnnotationOperations:
         x=max(0,min(float(point[0]),p.rect.width-old.width))
         y=max(0,min(float(point[1]),p.rect.height-old.height))
         if not __import__('math').isfinite(x+y): raise ValueError("메모 위치를 확인해 주세요.")
-        with self.transaction(annotation=True):
+        with self.transaction(annotation=True, pages=[page]):
             # Text icons carry NoRotate. set_rect reanchors their fixed-size
             # appearance on rotated pages; translate the stored PDF rect instead.
             matrix = p.derotation_matrix * ~p.transformation_matrix
@@ -223,7 +223,7 @@ class AnnotationOperations:
             descendants.update(children); order.extend(children)
         if any(not x["editable"] for x in items if x["id"] in descendants):
             raise ValueError("연결된 답글에 잠기거나 지원하지 않는 항목이 있어 삭제하지 않았어요.")
-        with self.transaction(annotation=True):
+        with self.transaction(annotation=True, pages=[page]):
             for key in reversed(order):
                 p, a = self._annotation(page, key)
                 p.delete_annot(a)

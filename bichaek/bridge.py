@@ -48,6 +48,9 @@ class Bridge(QObject):
     showError = Signal(str)
     requestClose = Signal()
     navigateRequested = Signal(int, float, float)
+    resumeRequested = Signal(int)
+    outlineRequested = Signal(int, float)
+    outlineChanged = Signal()
 
     def __init__(self, images, hub=None):
         super().__init__()
@@ -133,6 +136,8 @@ class Bridge(QObject):
         self._text_pending = set()
         self._text_tick = 0
         self._auto_attempted = set()
+        self._outline = []
+        self._outline_token = 0
         self.preferences = QSettings("Bichaek", "BichaekPDF")
         self.images.budget = int(self.preferences.value("cacheMiB",512))*1024*1024
         self._auto_ocr = self.preferences.value("automaticOcr", True, type=bool)
@@ -339,6 +344,7 @@ class Bridge(QObject):
             return
         old_session, old_revision = self._state.get("session"), self._state.get("revision")
         previous_hit = self.activeSearchHit
+        old_tokens = self._state.get("pageTokens") or []
         self._state = state
         self._image_focus = state.get("imageFocus", {})
         if 'annotationFocus' in state: self._annotation_focus = state['annotationFocus']
@@ -356,9 +362,12 @@ class Bridge(QObject):
             if old_session != state["session"]: self._auto_attempted.clear()
             self._text_tick += 1
             self.textLayoutChanged.emit()
-            self.images.clear_session(old_session)
-            self._sources.clear()
-            self._metrics.clear()
+            if old_session != state["session"]:
+                self.images.clear_session(old_session)
+                self._sources.clear()
+                self._metrics.clear()
+            else:
+                self._retain_unchanged_pages(state, old_tokens)
             self._pending_images.clear()
             self._render_queue.clear()
             self._requested_widths.clear()
@@ -375,6 +384,7 @@ class Bridge(QObject):
             self.searchChanged.emit()
             self._tick += 1
             self.imagesChanged.emit()
+            self._request_outline()
         self._page = min(max(0, self._page), state["count"]-1)
         self._selection = [x for x in self._selection if x < state["count"]] or [self._page]
         self.stateChanged.emit()
@@ -444,6 +454,11 @@ class Bridge(QObject):
             self._page, self._selection = 0, [0]
             self.update_state(state)
             self.set_status("문서를 열었어요.  " + ("편집 가능" if state["editable"] else "읽기 전용"))
+            library = self.library
+            resume = library.opened(state["path"], state["name"], state["count"]) if library else 0
+            if 0 < resume < state["count"]:
+                self.resumeRequested.emit(resume)
+                self.set_status("문서를 열었어요. 지난번에 읽던 %d페이지로 이동했어요." % (resume+1))
         self.command("open", {"path": path}, opened, error_callback=self.failure)
 
     @Slot(bool)
@@ -463,8 +478,21 @@ class Bridge(QObject):
         self.set_status("PDF를 저장하고 검증하는 중…")
         def done(state):
             self.update_state(state)
+            if self.library: self.library.opened(state["path"], state["name"], state["count"])
+            self.remember_page()
             self.set_status("저장 완료 · " + state["name"])
         self.command("save", {"path": path}, done, error_callback=self.failure)
+
+    @Property(str, notify=preferencesChanged)
+    def themeMode(self):
+        value = str(self.preferences.value("themeMode", "system"))
+        return value if value in ("system", "light", "dark") else "system"
+
+    @Slot(str)
+    def setThemeMode(self, value):
+        if value in ("system", "light", "dark"):
+            self.preferences.setValue("themeMode", value)
+            self.preferencesChanged.emit()
 
     @Property(str,notify=preferencesChanged)
     def graphicsMode(self):return self.preferences.value("graphicsMode","auto")
@@ -482,8 +510,35 @@ class Bridge(QObject):
         self.images.budget=value*1024*1024;self.images.trim()
         self.preferences.setValue("cacheMiB",value);self.preferencesChanged.emit()
 
+    def _page_token(self, page, state=None):
+        tokens = (state or self._state).get("pageTokens") or []
+        # Older engines without tokens fall back to revision-wide invalidation.
+        return tokens[page] if 0 <= page < len(tokens) else f'r{(state or self._state)["revision"]}p{page}'
+
     def _image_key(self,page,kind,width):
-        return f'{self._state["session"]}-{self._state["revision"]}-{page}-{kind}-{width}'
+        return f'{self._state["session"]}-{self._page_token(page)}-{kind}-{width}'
+
+    def _retain_unchanged_pages(self, state, previous):
+        """After an edit, keep every rendered page whose content did not change.
+
+        Only edited pages are drawn again; moved pages reuse their images, and
+        an edited page keeps showing its previous image until the new one is
+        ready, instead of every page and thumbnail going blank."""
+        old_tokens = set(previous)
+        count = state["count"]
+        for (page, kind), key in list(self._sources.items()):
+            parts = key.split("-")
+            token = parts[1] if len(parts) >= 4 else ""
+            if page >= count:
+                del self._sources[(page, kind)]
+                continue
+            new = self._page_token(page, state)
+            if token == new: continue
+            # Same slot, new content: keep the old picture as a placeholder.
+            # Content moved from elsewhere: the old picture would be wrong.
+            if new in old_tokens: del self._sources[(page, kind)]
+        live = set(state.get("pageTokens") or [])
+        self._metrics = {t: m for t, m in self._metrics.items() if t in live}
 
     def _publish_image(self,page,kind,key):
         if self._sources.get((page,kind)) == key: return
@@ -582,13 +637,18 @@ class Bridge(QObject):
             page,kind,width,preview=self._render_queue.pop(key)
             def done(result,key=key,page=page,kind=kind,index=index,preview=preview,width=width):
                 try:
-                    if self.closed or not self.active or result.get("stale") or result.get("revision")!=self._state["revision"] or result.get("session")!=self._state["session"]:return
+                    # Images are keyed by page content, so a frame finished after
+                    # an unrelated edit is still valid for the key it was asked for.
+                    if self.closed or not self.active or result.get("stale") or result.get("session")!=self._state["session"]:return
                     image=self.frames.image(index,result)
                     if image.isNull():raise RuntimeError("빈 페이지 이미지입니다.")
                     self.images.put(key,image)
+                    if key.split("-")[1]!=self._page_token(page):return  # page changed since the request
                     metrics=(result["pageWidth"],result["pageHeight"])
-                    if self._metrics.get(page)!=metrics:
-                        self._metrics[page]=metrics;self.pageMetricsChanged.emit(page)
+                    token=result.get("token") or self._page_token(page)
+                    if self._metrics.get(token)!=metrics:
+                        self._metrics[token]=metrics
+                        if self._page_token(page)==token:self.pageMetricsChanged.emit(page)
                     target=self._image_key(page,kind,self._requested_widths.get((page,kind),width))
                     if self.images.get(target) is not None:self._publish_image(page,kind,target)
                     elif not self.imageUrl(page,kind) or not preview:self._publish_image(page,kind,key)
@@ -617,17 +677,51 @@ class Bridge(QObject):
 
     @Slot(int, result=float)
     def pageRatio(self, page):
-        w, h = self._metrics.get(page, self._state.get("size", [595, 842]))
+        w, h = self._metrics.get(self._page_token(page), self._state.get("size", [595, 842]))
         return h / w
 
     @Slot(int, result=float)
     def pageWidth(self, page):
-        return self._metrics.get(page, self._state.get("size", [595, 842]))[0]
+        return self._metrics.get(self._page_token(page), self._state.get("size", [595, 842]))[0]
+
+    @property
+    def library(self):
+        return getattr(self.workspace, "library", None) if self.workspace else None
+
+    def remember_page(self):
+        if self.library and self._state.get("count"):
+            self.library.remember(self._state.get("path", ""), self._page)
+
+    def _request_outline(self):
+        self._outline_token += 1
+        token = self._outline_token
+        if self._outline:
+            self._outline = []
+            self.outlineChanged.emit()
+        if not self._state.get("count") or self.closed: return
+        def got(result):
+            if token != self._outline_token or self.closed or result.get("stale"): return
+            self._outline = result.get("items", [])
+            self.outlineChanged.emit()
+        def failed(message):
+            if token == self._outline_token: self._outline = []; self.outlineChanged.emit()
+        self.command("outline", {}, got, priority=9, guarded=True, error_callback=failed)
+
+    @Property('QVariantList', notify=outlineChanged)
+    def outline(self): return self._outline
+
+    @Slot(int)
+    def openOutline(self, index):
+        if not 0 <= index < len(self._outline): return
+        item = self._outline[index]
+        if 0 <= item["page"] < self._state["count"]:
+            self.outlineRequested.emit(item["page"], float(item.get("y", 0)))
 
     @Slot(int)
     def setCurrentPage(self, page):
         if 0 <= page < self._state["count"] and page != self._page:
             self._page = page
+            self.remember_page()
             self._blocks = []
             self.blocksChanged.emit()
             self.selectionChanged.emit()
@@ -648,6 +742,7 @@ class Bridge(QObject):
             self._selection = [page]
         if not shift: self._selection_anchor=page
         self._page = page
+        self.remember_page()
         self._blocks = []
         self.blocksChanged.emit()
         self.selectionChanged.emit()
@@ -909,6 +1004,27 @@ class Bridge(QObject):
             'text':target.get('text',''),'source':self._font_choice,'path':self._font_path},got,
             guarded=True,error_callback=lambda message:None)
 
+
+    FALLBACK_NAMES = ("malgun gothic", "맑은 고딕", "apple sd gothic neo", "noto sans cjk kr", "noto sans kr",
+                      "nanumgothic", "나눔고딕", "source han sans k")
+
+    def _fallback_row(self):
+        """A regular Korean UI face that looks at home beside Latin text."""
+        for wanted in self.FALLBACK_NAMES:
+            for row in self._font_options:
+                names = [row.get("label", ""), row.get("family", "")] + list(row.get("aliases", []))
+                style = str(row.get("style", "Regular")).casefold()
+                if style in ("regular", "normal", "book") and any(n.casefold() == wanted for n in names):
+                    return row
+        return None
+
+    def fallback_font_path(self):
+        row = self._fallback_row()
+        return row["key"] if row else ""
+
+    def fallback_label(self):
+        row = self._fallback_row()
+        return row.get("family") or row["label"] if row else "기본 한글 글꼴"
 
     @Property('QVariantList', notify=fontsChanged)
     def fontOptions(self):
