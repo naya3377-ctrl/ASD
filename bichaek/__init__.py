@@ -1,2 +1,2 @@
 """YoonDF - an offline PDF editor. SPDX-License-Identifier: AGPL-3.0-or-later"""
-__version__ = "0.9.2"
+__version__ = "0.9.3"

@@ -51,7 +51,7 @@ def run_primary(relay):
     app.setApplicationName("YoonDF")
     app.setApplicationDisplayName("윤DF")
     app.setOrganizationName("Bichaek")
-    app.setApplicationVersion("0.9.2")
+    app.setApplicationVersion("0.9.3")
     app.setFont(QFont("Malgun Gothic" if os.name == "nt" else "Noto Sans CJK KR", 10))
     root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent.parent))
     app.setWindowIcon(QIcon(str(root / "assets" / "icon.svg")))
