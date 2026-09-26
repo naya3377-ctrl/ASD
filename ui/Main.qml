@@ -51,7 +51,12 @@ ApplicationWindow {
     property bool pageKeysEnabled: hasDocument && !pageViewMode.activeFocus && !pageViewMode.popup.visible && !textDialog.visible && !mergeDialog.visible && !ocrDialog.visible && !settingsDialog.visible && !errorDialog.visible && !aboutDialog.visible && !typingText && !readerMenuOpen && !tabMenu.visible && !switching
     property var pendingNavigation: null
     property string tool: "read"
+    readonly property var markupTools: ["highlight","underline","strikeout"]
+    function isMarkupTool(value) { return markupTools.indexOf(value)>=0; }
+    // Two modes only. The comment list is a side panel either mode can open;
+    // page tools live in the sidebar all the time.
     property string workspaceMode: "read"
+    property bool commentsOpen: false
     property real zoom: 1
     property bool twoPageView: false
     property int pageColumns: twoPageView ? 2 : 1
@@ -87,8 +92,8 @@ ApplicationWindow {
     }
     property bool searchOpen: false
     property bool canAnnotate: pdf.document.annotatable === true && !pdf.busy && !pdf.ocrBusy && !textDialog.visible && !annotationEditor.visible
-    onWorkspaceModeChanged: if(pdf) pdf.setAnnotationPanelVisible(workspaceMode==="comments")
-    onPdfChanged: { if(presenting) endPresentation(); if(pdf) pdf.setAnnotationPanelVisible(workspaceMode==="comments"); }
+    onCommentsOpenChanged: if(pdf) pdf.setAnnotationPanelVisible(commentsOpen)
+    onPdfChanged: { if(presenting) endPresentation(); if(pdf) pdf.setAnnotationPanelVisible(commentsOpen); }
     property bool canEdit: pdf.document.editable && !pdf.busy && !pdf.ocrBusy && !textDialog.visible && !annotationEditor.visible
     property bool hasDocument: pdf.document.count > 0
     property int draggedPage: -1
@@ -135,7 +140,7 @@ ApplicationWindow {
             visibility=state.visibility;
             if(state.visibility===Window.Windowed) { x=state.x; y=state.y; width=state.width; height=state.height; }
         }
-        pdf.setAnnotationPanelVisible(workspaceMode==="comments");
+        pdf.setAnnotationPanelVisible(commentsOpen);
         Qt.callLater(function() {
             if(root.pdf!==owner || root.presenting || root.switching) return;
             pages.forceLayout();
@@ -157,13 +162,13 @@ ApplicationWindow {
         searchDelay.stop(); navigationTimer.stop(); pendingNavigation=null;
         var page=pdf.currentPage, cell=cellForPage(page);
         tabWorkspace.rememberView({page:page,offset:cell ? (pages.contentY-cellTop(cell))/cell.pageWidth : 0,
-            x:pages.contentX/Math.max(1,pages.contentWidth),zoom:zoom,twoPage:twoPageView,tool:tool,mode:workspaceMode,
+            x:pages.contentX/Math.max(1,pages.contentWidth),zoom:zoom,twoPage:twoPageView,tool:tool,mode:workspaceMode,comments:commentsOpen,
             sidebar:sidebarOpen,sidebarView:sidebarView,search:searchOpen,query:searchInput.text});
         switching=true; restoring=true;
     }
     function restoreView() {
         var state=tabWorkspace.viewState, owner=pdf;
-        twoPageView=!!state.twoPage; zoom=state.zoom || 1; tool=state.tool || "read"; workspaceMode=state.mode || "read";
+        twoPageView=!!state.twoPage; zoom=state.zoom || 1; tool=state.tool || "read"; workspaceMode=state.mode==="edit" ? "edit" : "read"; commentsOpen=!!state.comments;
         sidebarOpen=state.sidebar === undefined ? true : state.sidebar; searchOpen=!!state.search;
         sidebarView=state.sidebarView || "pages";
         searchInput.text=state.query === undefined ? pdf.searchQuery : state.query; pendingQuery=searchInput.text;
@@ -196,11 +201,61 @@ ApplicationWindow {
         pendingNavigation={owner:pdf,page:page,offset:y>60 ? Math.max(0,(y-24)/w) : 0,horizontal:pages.contentX/Math.max(1,pages.contentWidth),tries:0};
         navigationTimer.restart();
     }
+    // Editing commits itself: clicking anywhere outside the box applies the
+    // change (or just closes an untouched box). Clicking another paragraph
+    // then opens it, located again after the page's text boxes refresh.
+    property var pendingEditPoint: null
+    property bool commitWhenReady: false
+    function commitEdit(point) {
+        if(!textDialog.visible || pdf.busy) return;
+        pendingEditPoint=point || null;
+        var live=pdf.liveEditor;
+        if(textDialog.targetData.mode==="replace") {
+            if(live.loading) { commitWhenReady=true; return; }
+            if(!live.edited) { textDialog.close(); Qt.callLater(root.openPendingEdit); return; }
+            if(live.canApply) { pdf.applyText(textDialog.targetData,textDialog.text,textDialog.fontSize,textDialog.areaHeight); return; }
+            pendingEditPoint=null;   // keep the draft; the status bar says what to fix
+        } else if(!textDialog.text.trim().length) { textDialog.close(); Qt.callLater(root.openPendingEdit); }
+        else pdf.applyText(textDialog.targetData,textDialog.text,textDialog.fontSize,textDialog.areaHeight);
+    }
+    function openPendingEdit() {
+        var point=pendingEditPoint;
+        if(!point || textDialog.visible || pdf.busy || tool!=="editText") return;
+        var blocks=pdf.blockBoxes(point.page);
+        if(!blocks.length) { pdf.loadBlocksForPage(point.page); return; }   // retried on blocksChanged
+        pendingEditPoint=null;
+        for(var i=0;i<blocks.length;++i) {
+            var r=blocks[i].displayRect;
+            if(point.x>=r[0] && point.x<=r[2] && point.y>=r[1] && point.y<=r[3]) { pdf.editBlock(blocks[i]); return; }
+        }
+    }
+    Connections {
+        target: pdf.liveEditor
+        function onChanged() { if(root.commitWhenReady && !pdf.liveEditor.loading) { root.commitWhenReady=false; root.commitEdit(root.pendingEditPoint); } }
+    }
+    // One line under the toolbar explaining what the current tool expects.
+    function hintText() {
+        if(tool==="editText") return textDialog.visible
+            ? "다른 곳을 클릭하면 자동으로 적용돼요. 다른 문단을 누르면 바로 이어서 고칠 수 있어요 · Esc 취소 · Ctrl+S 파일 저장"
+            : "고칠 문단을 클릭하세요. 다른 곳을 클릭하면 자동으로 적용돼요.";
+        if(tool==="imageMove") return "이미지를 드래그해 이동하고, 오른쪽 아래 모서리로 크기를 조절하세요.";
+        if(isMarkupTool(tool)) return "주석을 남길 글자를 드래그하세요.";
+        if(tool==="note") return "페이지에서 메모를 남길 위치를 클릭하세요.";
+        if(tool==="addText" || tool==="image") return "페이지 위에서 편집할 영역을 드래그하세요.";
+        if(pdf.pageTextState==="restricted") return "문서 작성자가 텍스트 복사를 제한했어요.";
+        if(pdf.ocrBusy) return "스캔의 글자를 인식하고 있어요. 문서는 계속 읽을 수 있습니다.";
+        return "이 페이지에는 선택할 문자층이 없어요. OCR로 글자를 인식할 수 있습니다.";
+    }
+    // Closing the list also drops a comment tool, returning to the mode's own tool.
+    function closeComments() {
+        commentsOpen=false;
+        if(tool==="note" || isMarkupTool(tool)) useTool(workspaceMode==="edit" ? "editText" : "read");
+    }
     function useTool(value) {
         if(textDialog.visible || annotationEditor.visible) return;
         tool = value;
-        if (value==="note") workspaceMode="comments";
-        else if (["highlight","underline","strikeout"].indexOf(value)>=0) {}
+        if (value==="note") commentsOpen=true;
+        else if (isMarkupTool(value)) {}
         else if (["read","hand"].indexOf(value)<0) workspaceMode = "edit";
         if (value === "editText") pdf.loadBlocks(pdf.currentPage);
     }
@@ -349,8 +404,6 @@ ApplicationWindow {
                         id: modeRow; anchors.centerIn: parent; spacing: 2
                         ActionButton { objectName: "readModeButton"; compact: true; enabled: !textDialog.visible && !annotationEditor.visible; text: "읽기"; active: root.workspaceMode === "read"; onClicked: { root.workspaceMode="read"; root.useTool("read"); } }
                         ActionButton { objectName: "editModeButton"; compact: true; text: "편집"; active: root.workspaceMode === "edit"; enabled: root.hasDocument && !textDialog.visible && !annotationEditor.visible; onClicked: { root.workspaceMode="edit"; root.useTool("editText"); } }
-                        ActionButton { objectName: "commentsModeButton"; compact: true; text: "주석"; active: root.workspaceMode==="comments"; enabled: root.hasDocument && !textDialog.visible && !annotationEditor.visible; onClicked: { root.workspaceMode="comments"; root.useTool("read"); } }
-                        ActionButton { objectName: "pagesModeButton"; compact: true; text: "페이지 정리"; active: root.workspaceMode === "pages"; enabled: root.hasDocument && !textDialog.visible && !annotationEditor.visible; onClicked: { root.workspaceMode="pages"; root.sidebarOpen=true; root.sidebarView="pages"; root.useTool("read"); } }
                     }
                 }
                 ActionButton { visible: root.workspaceMode !== "edit"; glyph: "text"; hint: "텍스트 선택"; active: root.tool === "read"; enabled: root.hasDocument; Layout.leftMargin: 6; onClicked: root.useTool("read") }
@@ -384,6 +437,7 @@ ApplicationWindow {
                 }
                 ActionButton { glyph: "add"; hint: "확대 · Ctrl++"; enabled: root.hasDocument; onClicked: root.zoomBy(1.15) }
                 ToolSeparator {}
+                ActionButton { objectName: "commentsModeButton"; glyph: "note"; hint: "주석 목록"; active: root.commentsOpen; enabled: root.hasDocument && !annotationEditor.visible; onClicked: root.commentsOpen=!root.commentsOpen }
                 ActionButton { glyph: "search"; hint: "문서 검색 · Ctrl+F"; active: root.searchOpen; enabled: root.hasDocument; onClicked: { root.searchOpen=!root.searchOpen; root.sidebarOpen=true; if(root.searchOpen) searchInput.forceActiveFocus(); } }
                 ActionButton { objectName: "presentationButton"; glyph: "present"; hint: "슬라이드 쇼 · F5"; enabled: root.hasDocument && !pdf.busy && !pdf.ocrBusy; onClicked: root.startPresentation() }
                 ActionButton { objectName: "printButton"; glyph: "print"; hint: "인쇄 · Ctrl+P"; enabled: root.tabActionsEnabled && root.hasDocument && pdf.document.printable && !pdf.busy && !pdf.ocrBusy; onClicked: pdf.printDocument() }
@@ -444,7 +498,7 @@ ApplicationWindow {
                 Icon { name: "check"; width: 14; height: 14; tone: Theme.inkMuted; visible: root.tool !== "read" && root.tool !== "hand" }
                 Text {
                     Layout.fillWidth: true; font.pixelSize: 12; color: Theme.inkSoft; elide: Text.ElideRight
-                    text: root.tool === "editText" ? "본문을 클릭해서 그 자리에서 수정하세요. 위쪽 도구 막대에서 적용하거나 취소할 수 있어요." : root.tool === "imageMove" ? "이미지를 드래그해 이동하고, 오른쪽 아래 모서리로 크기를 조절하세요." : ["highlight","underline","strikeout"].indexOf(root.tool)>=0 ? "주석을 남길 글자를 드래그하세요." : root.tool==="note" ? "페이지에서 메모를 남길 위치를 클릭하세요." : ["addText","image"].indexOf(root.tool)>=0 ? "페이지 위에서 편집할 영역을 드래그하세요." : pdf.pageTextState === "restricted" ? "문서 작성자가 텍스트 복사를 제한했어요." : pdf.ocrBusy ? "스캔의 글자를 인식하고 있어요. 문서는 계속 읽을 수 있습니다." : "이 페이지에는 선택할 문자층이 없어요. OCR로 글자를 인식할 수 있습니다."
+                    text: root.hintText()
                 }
                 ActionButton { visible: pdf.pageTextState === "empty" && !pdf.ocrBusy; implicitHeight: 27; text: "이 페이지 OCR"; enabled: root.canEdit; onClicked: pdf.recognizeCurrentPage() }
             }
@@ -651,7 +705,7 @@ ApplicationWindow {
 
         Rectangle {
             id: workspace; Layout.fillWidth: true; Layout.fillHeight: true; color: Theme.canvas
-            TapHandler { onPressedChanged: if(pressed) pages.forceActiveFocus() }
+            TapHandler { onPressedChanged: if(pressed) { if(textDialog.visible) root.commitEdit(null); pages.forceActiveFocus(); } }
             ListView {
                 id: pages; objectName: "pageList"; anchors.fill: parent; clip: true
                 visible: root.hasDocument
@@ -760,7 +814,7 @@ ApplicationWindow {
         }
         ColumnLayout {
             id: commentsDock; objectName: "commentsDock"
-            visible: (root.workspaceMode==="comments" || annotationEditor.visible) && root.hasDocument
+            visible: (root.commentsOpen || annotationEditor.visible) && root.hasDocument
             Layout.preferredWidth: 350; Layout.minimumWidth: 300; Layout.maximumWidth: 350; Layout.fillWidth: false; Layout.fillHeight: true; spacing: 0
             AnnotationEditor {
                 id: annotationEditor; controller: root.pdf
@@ -770,7 +824,7 @@ ApplicationWindow {
             CommentsPanel {
                 controller: root.pdf; activeTool: root.tool; allowActions: !annotationEditor.visible && !textDialog.visible
                 Layout.fillWidth: true; Layout.fillHeight: true
-                onToolRequested: function(tool) { if(tool==="closeComments") { root.workspaceMode="read"; root.useTool("read"); } else root.useTool(tool); }
+                onToolRequested: function(tool) { if(tool==="closeComments") root.closeComments(); else root.useTool(tool); }
             }
         }
         Rectangle {
@@ -825,7 +879,7 @@ ApplicationWindow {
                     property real pageWidth: Math.max(80, ((pages.width-64-16*(root.pageColumns-1))/root.pageColumns)*root.zoom)
                     property real ratio: pdf.pageRatio(index)
                     property real pdfWidth: pdf.pageWidth(index)
-                    property var pageBlocks: { pdf.blocks; return pdf.blocksAt(index); }
+                    property var pageBlocks: { pdf.blocksTick; return root.tool === "editText" ? pdf.blockBoxes(index) : []; }
                     property bool near: !root.presenting && parent.parent.y+height >= pages.contentY-pages.height && parent.parent.y <= pages.contentY+pages.height*2
                     property string imageUrl: ""
                     property string renderError: ""
@@ -900,7 +954,7 @@ ApplicationWindow {
                         Rectangle {
                             property var annotation: pdf.selectedAnnotation
                             property real factor: paper.width/pageCell.pdfWidth
-                            visible: root.workspaceMode==="comments" && annotation.page===pageCell.index && !!annotation.rect
+                            visible: root.commentsOpen && annotation.page===pageCell.index && !!annotation.rect
                             x: annotation.rect ? annotation.rect[0]*factor-3 : 0; y: annotation.rect ? annotation.rect[1]*factor-3 : 0
                             width: annotation.rect ? (annotation.rect[2]-annotation.rect[0])*factor+6 : 0
                             height: annotation.rect ? (annotation.rect[3]-annotation.rect[1])*factor+6 : 0
@@ -911,14 +965,24 @@ ApplicationWindow {
                             allowEdits: !textDialog.visible && !annotationEditor.visible
                             onMenuOpenChanged: root.readerMenuOpen=menuOpen
                             anchors.fill: parent; pageNumber: pageCell.index; pdfWidth: pageCell.pdfWidth; viewport: pages
-                            markupTool: ["highlight","underline","strikeout"].indexOf(root.tool)>=0 ? root.tool : ""
+                            markupTool: root.isMarkupTool(root.tool) ? root.tool : ""
                             visible: root.tool === "read" || !!markupTool; enabled: visible && !pdf.busy
+                        }
+                        MouseArea {
+                            // Below the live editor (z 60): any click elsewhere on the page commits.
+                            objectName: "commitCatcher"+pageCell.index
+                            anchors.fill: parent; z: 55; enabled: textDialog.visible
+                            cursorShape: root.tool==="editText" ? Qt.IBeamCursor : Qt.ArrowCursor
+                            onPressed: function(mouse) {
+                                var s=pageCell.pdfWidth/paper.width;
+                                root.commitEdit(root.tool==="editText" ? {page:pageCell.index,x:mouse.x*s,y:mouse.y*s} : null);
+                            }
                         }
                         InlineTextEditor { session: textDialog; controller: root.pdf; pageNumber: pageCell.index; factor: paper.width/pageCell.pdfWidth }
                         LegacyTextEditor { session: textDialog; controller: root.pdf; pageNumber: pageCell.index; factor: paper.width/pageCell.pdfWidth }
                         ImageHandles {
                             anchors.fill: parent; z: 50; controller: root.pdf
-                            objects: { pdf.textTick; return pdf.textLayout(pageCell.index).movableImages || []; }
+                            objects: { pdf.textTick; return root.tool === "imageMove" ? pdf.movableImages(pageCell.index) : []; }
                             factor: paper.width/pageCell.pdfWidth; pdfWidth: pageCell.pdfWidth; pdfHeight: pageCell.pdfWidth*pageCell.ratio
                             editing: root.tool==="imageMove" && root.canEdit
                         }
@@ -1003,12 +1067,13 @@ ApplicationWindow {
     Connections {
         target: root.pdf
         function onOpenMergeDialog() { mergeDialog.open(); }
-        function onOpenComments() { root.workspaceMode="comments"; }
+        function onOpenComments() { root.commentsOpen=true; }
         function onShowAnnotationEditor(data) { annotationEditor.compose(data); }
         function onNavigateRequested(page,x,y) { root.jumpTo(page,x,y); }
         function onResumeRequested(page) { root.goPage(page); }
         function onOutlineRequested(page,y) { root.jumpToHeading(page,y); }
-        function onTextCommitted() { textDialog.close(); root.finishDraftClose(); }
+        function onTextCommitted() { textDialog.close(); root.finishDraftClose(); Qt.callLater(root.openPendingEdit); }
+        function onBlocksChanged() { if(root.pendingEditPoint) Qt.callLater(root.openPendingEdit); }
         function onAnnotationCommitted() { annotationEditor.close(); if(root.tool==="note") root.tool="read"; root.finishDraftClose(); }
         function onImageInserted() { root.useTool("imageMove"); }
         function onShowTextEditor(data) { textDialog.compose(data); }
@@ -1054,7 +1119,7 @@ ApplicationWindow {
         property real fontSize: 14
         property real areaHeight: 40
         property string fallbackFont: root.uiFontFamily
-        onVisibleChanged: pdf.setTextEditorVisible(visible)
+        onVisibleChanged: { pdf.setTextEditorVisible(visible); if(!visible) root.commitWhenReady=false; }
         function close() { visible=false; }
         function compose(data) {
             if(visible) return;
@@ -1134,7 +1199,7 @@ ApplicationWindow {
     }
 
     Dialog {
-        id: aboutDialog; anchors.centerIn: parent; width: 650; height: 570; modal: true; title: "윤DF · 0.9.4"
+        id: aboutDialog; anchors.centerIn: parent; width: 650; height: 570; modal: true; title: "윤DF · 0.9.5"
         standardButtons: Dialog.Ok
         contentItem: ColumnLayout {
             Text { text: "Copyright © 2026 YoonDF contributors"; color: Theme.ink }

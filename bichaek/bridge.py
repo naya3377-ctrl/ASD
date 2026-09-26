@@ -102,6 +102,7 @@ class Bridge(QObject):
         self._tick = 0
         self._blocks = []
         self._page_blocks = {}
+        self._blocks_tick = 0
         self._blocks_pending = set()
         self._query = ""
         self._hits = []
@@ -230,6 +231,10 @@ class Bridge(QObject):
         self._wheel_speed = min(5.0, max(0.5, value))
         self.preferences.setValue("wheelSpeed", self._wheel_speed)
         self.preferencesChanged.emit()
+
+    @Slot(int, result='QVariantList')
+    def movableImages(self, page):
+        return self._text_layouts.get(page, {}).get("movableImages", [])
 
     @Slot(int, result='QVariantMap')
     def textLayout(self, page):
@@ -380,7 +385,7 @@ class Bridge(QObject):
             self._hits = []
             self._hit_index = -1
             self._search_busy = False
-            self.blocksChanged.emit()
+            self._blocks_updated()
             self.searchChanged.emit()
             self._tick += 1
             self.imagesChanged.emit()
@@ -723,7 +728,7 @@ class Bridge(QObject):
             self._page = page
             self.remember_page()
             self._blocks = []
-            self.blocksChanged.emit()
+            self._blocks_updated()
             self.selectionChanged.emit()
             self.textLayoutChanged.emit()
             self.requestText(page)
@@ -744,7 +749,7 @@ class Bridge(QObject):
         self._page = page
         self.remember_page()
         self._blocks = []
-        self.blocksChanged.emit()
+        self._blocks_updated()
         self.selectionChanged.emit()
 
         self.textLayoutChanged.emit()
@@ -951,11 +956,28 @@ class Bridge(QObject):
     @Slot(int, result='QVariantList')
     def blocksAt(self, page): return self._page_blocks.get(page,[])
 
+    @Slot(int, result='QVariantList')
+    def blockBoxes(self, page):
+        """What QML needs to draw clickable paragraph boxes. The full blocks
+        carry every character's coordinates; copying those into QML on each
+        refresh is what made entering edit mode slow on dense pages."""
+        return [{"id": b["id"], "page": b.get("page", page), "displayRect": b["displayRect"]}
+                for b in self._page_blocks.get(page, [])]
+
+    @Property(int, notify=blocksChanged)
+    def blocksTick(self): return self._blocks_tick
+
+    def _blocks_updated(self):
+        # QML depends on this counter, not on the block list itself.
+        self._blocks_tick += 1
+        self.blocksChanged.emit()
+
     @Slot(int)
     def loadBlocks(self, page):
         self.loadBlocksForPage(page)
         if page in self._page_blocks:
-            self._blocks=self._page_blocks[page];self.blocksChanged.emit()
+            if self._blocks is not self._page_blocks[page]:
+                self._blocks=self._page_blocks[page];self._blocks_updated()
 
     @Slot(int)
     def loadBlocksForPage(self, page):
@@ -972,7 +994,7 @@ class Bridge(QObject):
                 for key in list(self._page_blocks):
                     if key!=self._page and key!=page:
                         self._page_blocks.pop(key);break
-            self.blocksChanged.emit()
+            self._blocks_updated()
         def failed(message):
             self._blocks_pending.discard(stamp);self.set_status(message)
         self.command('objects',{'page':page},done,priority=2,guarded=True,error_callback=failed)
@@ -1041,7 +1063,6 @@ class Bridge(QObject):
         self._font_path = key if key not in ("original", "default") else ""
         self._font_preview()
         self.fontsChanged.emit()
-        self.stateChanged.emit()
 
     @Slot(bool)
     def setTextEditorVisible(self, visible):
@@ -1065,7 +1086,9 @@ class Bridge(QObject):
     @Slot('QVariantMap')
     def editBlock(self, block):
         if self._text_editor_open or self._annotation_editor_open: return
-        value = dict(block)
+        page = block.get("page", self._page)
+        full = next((b for b in self._page_blocks.get(page, []) if b["id"] == block.get("id")), None)
+        value = dict(full if full is not None else block)
         value["session"] = self._state["session"]
         value["page"] = value.get("page", self._page)
         value["revision"] = self._state["revision"]

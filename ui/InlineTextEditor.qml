@@ -35,7 +35,9 @@ Item {
         id: input; objectName: editor.editing ? "replacementText" : "inactiveInlineText"+pageNumber
         property bool bound: false
         visible: editor.live.ready; enabled: !controller.busy && editor.live.ready
-        width: editor.live.width; height: Math.max(1,(editor.editData.pageHeight || 1000)-(editor.editData.rect ? editor.editData.rect[1] : 0))
+        width: editor.live.width
+        // Only as tall as the text: clicks below it belong to the page and commit the edit.
+        height: Math.max(1,editor.live.height-Math.max(0,editor.live.offset))
         // Basic.TextArea adds padding + 4 on the left even when padding is 0.
         // Keep Qt's live document width equal to the PDF editing width on input.
         y: editor.live.offset; padding: 0; leftPadding: 0; rightPadding: 0

@@ -15,7 +15,8 @@ Item {
     required property int pageNumber
     required property real pdfWidth
     required property var viewport
-    property var layout: { controller.textTick; return controller.textLayout(pageNumber); }
+    // Hidden layers (editing modes) skip copying the page's character table.
+    property var layout: { controller.textTick; return layer.visible ? controller.textLayout(pageNumber) : ({chars: [], lines: [], links: [], images: [], copyable: false, hasText: false}); }
     property var selection: controller.textSelection
     property real factor: width / pdfWidth
     property int anchor: 0
@@ -89,6 +90,10 @@ Item {
     }
     Canvas {
         id: highlight; anchors.fill: parent
+        // A page-sized canvas costs tens of MB per repaint at high zoom.
+        // Only keep it while this page actually has a selection.
+        visible: layer.selection.page === layer.pageNumber && layer.selection.end > layer.selection.start
+        onVisibleChanged: if(visible) requestPaint()
         onPaint: {
             var ctx = getContext("2d"); ctx.reset();
             if (layer.selection.page !== layer.pageNumber) return;
