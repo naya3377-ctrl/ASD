@@ -1199,7 +1199,7 @@ ApplicationWindow {
     }
 
     Dialog {
-        id: aboutDialog; anchors.centerIn: parent; width: 650; height: 570; modal: true; title: "윤DF · 0.9.5"
+        id: aboutDialog; anchors.centerIn: parent; width: 650; height: 570; modal: true; title: "윤DF · 0.9.6"
         standardButtons: Dialog.Ok
         contentItem: ColumnLayout {
             Text { text: "Copyright © 2026 YoonDF contributors"; color: Theme.ink }

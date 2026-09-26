@@ -51,7 +51,7 @@ def run_primary(relay):
     app.setApplicationName("YoonDF")
     app.setApplicationDisplayName("윤DF")
     app.setOrganizationName("Bichaek")
-    app.setApplicationVersion("0.9.5")
+    app.setApplicationVersion("0.9.6")
     app.setFont(QFont("Malgun Gothic" if os.name == "nt" else "Noto Sans CJK KR", 10))
     root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent.parent))
     app.setWindowIcon(QIcon(str(root / "assets" / "icon.svg")))
@@ -83,6 +83,12 @@ def run_primary(relay):
     app.aboutToQuit.connect(relay.stop)
     app.aboutToQuit.connect(library.flush)
     app.aboutToQuit.connect(documents.shutdown)
+    from .diagnostics import StallWatch, note
+    note("YoonDF %s started: Qt %s, graphics %s, screen scale %.2f", app.applicationVersion(),
+         __import__("PySide6").__version__, os.environ.get("QT_QUICK_BACKEND") or os.environ.get("QSG_RHI_BACKEND", "default"),
+         app.primaryScreen().devicePixelRatio() if app.primaryScreen() else 1.0)
+    watch = StallWatch()
+    app.aboutToQuit.connect(watch.stop)
     result = app.exec()
     # Explicitly destroy the QML engine while its context is still alive.
     del engine

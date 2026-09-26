@@ -58,7 +58,13 @@ def engine_main(inbox, outbox, stopping=None):
                 elif msg.get("revision") is not None and msg["revision"] != engine.revision:
                     result = {"stale": True}
                 else:
+                    started = time.monotonic()
                     result = getattr(engine, msg["op"])(**msg.get("args", {}))
+                    spent = time.monotonic() - started
+                    if spent > 1.0:
+                        # Slow PDF work does not freeze the window but delays it.
+                        from .diagnostics import note
+                        note("slow PDF operation %s %.2fs (page %s)", msg["op"], spent, msg.get("args", {}).get("page", "-"))
                 outbox.put({"id": msg["id"], "op": msg["op"], "result": result})
             except Exception as exc:
                 failure('PDF operation: '+msg['op'])

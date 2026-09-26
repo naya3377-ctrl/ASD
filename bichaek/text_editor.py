@@ -1,7 +1,7 @@
 """One live QTextDocument drives both inline editing and the PDF text fragment.
 SPDX-License-Identifier: AGPL-3.0-or-later
 """
-import base64, hashlib, math
+import base64, hashlib, math, time
 from shiboken6 import isValid
 from .text_geometry import build_lines,SPACING
 from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer, QByteArray, QBuffer, QIODevice, QSizeF, QMarginsF, QRectF
@@ -89,7 +89,7 @@ class TextEditor(QObject):
         self.generation+=1;self.timer.stop();self.target=dict(target);self._ready=False;self._loading=False
         self._background='';self._status='원본 글꼴을 확인하는 중…';self._edited=False;self._offset=0;self._font_error=False;self._fallback=False;self._auto_tried='';self._fallback_failed=False
         self._width=max(20,target['rect'][2]-target['rect'][0]+.5);self._height=max(10,target['rect'][3]-target['rect'][1])
-        self._size=target.get('size',14);self.fonts={}
+        self._size=target.get('size',14);self.fonts={};self._opened=time.monotonic()
         fallback=self.raw.get('__fallback__');self.raw={'__fallback__':fallback} if fallback else {}
         self.widthChanged.emit()
         old=self.doc;self.doc=None
@@ -149,6 +149,9 @@ class TextEditor(QObject):
                 if self.doc is None:self._build()
                 else:self._reformat()
                 self._guard=False;self._ready=True;self._status='';self._measure();self.changed.emit()
+                if not had_document:
+                    from .diagnostics import note
+                    note('text editor ready in %.2fs (%d characters)',time.monotonic()-getattr(self,'_opened',time.monotonic()),len(self.doc.toPlainText()))
                 self.bridge._editor_font_family=next(iter(self.fonts.values()),'');self.bridge.fontsChanged.emit()
                 # Characters the chosen/original font lacks are shown in a
                 # Korean fallback right away instead of blocking the edit.
@@ -334,7 +337,7 @@ class TextEditor(QObject):
         # QPdfWriter rounds its MediaBox to integer points. Round outward and
         # crop on insertion, otherwise stretching to the fractional target
         # silently changes character positions after applying the edit.
-        writer=QPdfWriter(buffer);writer.setResolution(72);writer.setPageSize(QPageSize(QSizeF(math.ceil(self._width),math.ceil(self._height)),QPageSize.Point));writer.setPageMargins(QMarginsF(0,0,0,0));writer.setCreator('YoonDF 0.9.5')
+        writer=QPdfWriter(buffer);writer.setResolution(72);writer.setPageSize(QPageSize(QSizeF(math.ceil(self._width),math.ceil(self._height)),QPageSize.Point));writer.setPageMargins(QMarginsF(0,0,0,0));writer.setCreator('YoonDF 0.9.6')
         painter=QPainter(writer)
         if not painter.isActive():raise ValueError('편집 내용을 PDF로 만들지 못했어요.')
         painter.translate(0,self._offset);self.doc.drawContents(painter,QRectF(0,0,self._width,self._height-self._offset));painter.end();buffer.close()
@@ -346,7 +349,10 @@ class TextEditor(QObject):
         try:data=self.pdf_bytes()
         except Exception as exc:self._status=str(exc);self.changed.emit();self.applyFailed.emit();return
         self.bridge._busy=True;self.bridge.stateChanged.emit()
-        def done(state):self.bridge.update_state(state);self.bridge.set_status('화면에서 편집한 내용을 적용했어요. Ctrl+S로 저장하세요.');self.bridge.textCommitted.emit()
+        applied=time.monotonic()
+        def done(state):
+            from .diagnostics import note;note('edit applied in %.2fs',time.monotonic()-applied)
+            self.bridge.update_state(state);self.bridge.set_status('화면에서 편집한 내용을 적용했어요. Ctrl+S로 저장하세요.');self.bridge.textCommitted.emit()
         def failed(message):self.bridge._busy=False;self.bridge.stateChanged.emit();self._status=message;self.changed.emit();self.applyFailed.emit()
         self.bridge.command('replace_pdf_text',{'page':target['page'],'block_id':target['id'],'fragment':data,'rect':rect,
             'session':target['session'],'revision':target['revision']},done,error_callback=failed)
