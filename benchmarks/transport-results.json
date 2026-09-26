@@ -1,0 +1,46 @@
+{
+  "old": [
+    {
+      "page": 1,
+      "width": 1600,
+      "median_ms": 81.61
+    },
+    {
+      "page": 4,
+      "width": 1600,
+      "median_ms": 121.61
+    },
+    {
+      "page": 1,
+      "width": 3000,
+      "median_ms": 288.08
+    },
+    {
+      "page": 4,
+      "width": 3000,
+      "median_ms": 303.01
+    }
+  ],
+  "new": [
+    {
+      "page": 1,
+      "width": 1600,
+      "median_ms": 6.9
+    },
+    {
+      "page": 4,
+      "width": 1600,
+      "median_ms": 48.2
+    },
+    {
+      "page": 1,
+      "width": 3000,
+      "median_ms": 43.58
+    },
+    {
+      "page": 4,
+      "width": 3000,
+      "median_ms": 58.23
+    }
+  ]
+}

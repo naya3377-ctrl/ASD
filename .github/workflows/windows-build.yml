@@ -1,0 +1,40 @@
+name: Windows build
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt pyinstaller==6.16.0
+      - name: Test actual PDF edits
+        run: python -m unittest tests.test_document -v
+      - name: Build app
+        run: python -m PyInstaller --noconfirm YoonDF.spec
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $compiler = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (!(Test-Path $compiler)) { choco install innosetup --yes --no-progress }
+          & $compiler packaging\windows.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: YoonDF-Windows-0.9.2
+          path: dist/installer/*.exe
+      - name: Upload portable folder
+        uses: actions/upload-artifact@v4
+        with:
+          name: YoonDF-Windows-portable-0.9.2
+          path: dist/YoonDF/

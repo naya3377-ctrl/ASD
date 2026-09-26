@@ -1,0 +1,295 @@
+"""One live QTextDocument drives both inline editing and the PDF text fragment.
+SPDX-License-Identifier: AGPL-3.0-or-later
+"""
+import base64, hashlib, math
+from shiboken6 import isValid
+from .text_geometry import build_lines,SPACING
+from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer, QByteArray, QBuffer, QIODevice, QSizeF, QMarginsF, QRectF
+from PySide6.QtGui import (QTextDocument,QTextCursor,QTextCharFormat,QTextFormat,QTextBlockFormat,
+    QFont,QFontDatabase,QRawFont,QColor,QImage,QPdfWriter,QPageSize,QPainter)
+
+ORIGIN=int(QTextFormat.UserProperty)+1
+SIZE=int(QTextFormat.UserProperty)+2
+FLAGS=int(QTextFormat.UserProperty)+3
+FALLBACK=int(QTextFormat.UserProperty)+5
+
+
+class TextEditor(QObject):
+    changed=Signal()
+    widthChanged=Signal()
+    applyFailed=Signal()
+    def __init__(self,bridge):
+        super().__init__(bridge);self.bridge=bridge;self.target={};self.doc=None;self.fonts={};self.raw={}
+        self.ids={};self.generation=0;self._ready=False;self._status='';self._background=''
+        self._width=1.;self._height=1.;self._offset=0.;self._edited=False;self._size=14.;self._loading=False
+        self._guard=False;self._font_error=False;self._fallback=False;self._wrappers=[];self.device=QImage(1,1,QImage.Format_ARGB32)
+        self.device.setDotsPerMeterX(3780);self.device.setDotsPerMeterY(3780)
+        self.timer=QTimer(self);self.timer.setSingleShot(True);self.timer.setInterval(150);self.timer.timeout.connect(self.loadFonts)
+        self.watchdog=QTimer(self);self.watchdog.setSingleShot(True);self.watchdog.setInterval(25000);self.watchdog.timeout.connect(self._timed_out)
+    @Property(bool,notify=changed)
+    def ready(self):return self._ready
+    @Property(str,notify=changed)
+    def status(self):return self._status
+    @Property(str,notify=changed)
+    def background(self):return self._background
+    @Property(float,notify=widthChanged)
+    def width(self):return self._width
+    @Property(float,notify=changed)
+    def height(self):return self._height
+    @Property(float,notify=changed)
+    def offset(self):return self._offset
+    @Property(bool,notify=changed)
+    def edited(self):return self._edited
+    @Property(bool,notify=changed)
+    def canApply(self):return self._ready and not self._loading and not self._font_error and not self._invalid() and self._height<=self._max_height()+.01
+    @Property(bool,notify=changed)
+    def loading(self):return self._loading
+    @Property(bool,notify=changed)
+    def canUseFallback(self):return self._ready and not self._loading and bool(self._invalid())
+    def _fail(self,message):
+        self.watchdog.stop();self._loading=False;self._guard=False;self._font_error=True
+        self._status=message;self.changed.emit()
+    def _timed_out(self):
+        if not self._loading:return
+        self.generation+=1
+        self._fail('글꼴 확인 응답이 지연됐어요. 입력 내용과 원문은 유지돼요. 다시 시도하거나 취소해 주세요.')
+    @Slot()
+    def retry(self):self.loadFonts()
+    def _max_height(self):
+        return self.target.get('pageHeight',20000)-self.target.get('rect',[0,0])[1]
+    def start(self,target):
+        self._detach()
+        self.generation+=1;self.timer.stop();self.target=dict(target);self._ready=False;self._loading=False
+        self._background='';self._status='원본 글꼴을 확인하는 중…';self._edited=False;self._offset=0;self._font_error=False;self._fallback=False
+        self._width=max(20,target['rect'][2]-target['rect'][0]+.5);self._height=max(10,target['rect'][3]-target['rect'][1])
+        self._size=target.get('size',14);self.fonts={};self.raw={}
+        self.widthChanged.emit()
+        old=self.doc;self.doc=None
+        if old:old.deleteLater()
+        self.changed.emit()
+    def stop(self):
+        self.generation+=1;self.timer.stop();self.watchdog.stop();self.target={};self._ready=False;self._loading=False;self.changed.emit()
+        self._detach()
+    def _detach(self):
+        # QQuickTextEdit does not own an externally supplied QTextDocument.
+        # Disconnect every surviving view before the next edit deletes that document.
+        self._wrappers=[pair for pair in self._wrappers if isValid(pair[0])]
+        for wrapper,blank in self._wrappers:
+            if wrapper.textDocument() is self.doc:wrapper.setTextDocument(blank)
+    def _fragments(self):
+        if not self.doc:return []
+        result=[];block=self.doc.begin()
+        while block.isValid():
+            it=block.begin()
+            while not it.atEnd():
+                fragment=it.fragment()
+                if fragment.isValid():result.append((fragment.position(),fragment.length(),fragment.text(),fragment.charFormat()))
+                it+=1
+            block=block.next()
+        return result
+    def _requests(self):
+        result={}
+        if self.doc:
+            for pos,length,text,fmt in self._fragments():
+                name=fmt.property(ORIGIN) or self.target.get('font','');result[name]=result.get(name,'')+text
+        else:
+            for run in self.target.get('runs',[]) or [self.target]:
+                name=run.get('font','');result[name]=result.get(name,'')+run.get('text','')
+        return result or {self.target.get('font',''):''}
+    def loadFonts(self):
+        if not self.target:return
+        self.generation+=1;token=self.generation;target=dict(self.target);self._loading=True
+        self._status='글꼴을 확인하는 중…';self.watchdog.start();self.changed.emit()
+        def got(result):
+            if token!=self.generation or self.bridge.closed:return
+            if result.get('stale'):
+                self._fail('문서 상태가 바뀌었어요. 취소 후 본문을 다시 선택해 주세요.');return
+            had_document=self.doc is not None
+            try:
+                self.watchdog.stop();self._loading=False;errors=[]
+                for entry in result['fonts']:
+                    if entry['error']:errors.append(entry['error']);continue
+                    key=hashlib.sha256(entry['data']).hexdigest()
+                    if key not in self.ids:self.ids[key]=QFontDatabase.addApplicationFontFromData(QByteArray(entry['data']))
+                    families=QFontDatabase.applicationFontFamilies(self.ids[key])
+                    if not families:errors.append('원본 글꼴을 화면에 표시할 수 없어요. 다른 글꼴을 검색해 주세요.');continue
+                    family=families[0];self.fonts[entry['name']]=family
+                    raw=QRawFont();raw.loadFromData(QByteArray(entry['data']),20,QFont.PreferNoHinting);self.raw[entry['name']]=raw
+                if result.get('background'):self._background='data:image/png;base64,'+base64.b64encode(result['background']).decode('ascii')
+                if errors:
+                    self._fail(' · '.join(dict.fromkeys(errors)));return
+                self._font_error=False
+                self._guard=True
+                if self.doc is None:self._build()
+                else:self._reformat()
+                self._guard=False;self._ready=True;self._status='';self._measure();self.changed.emit()
+                self.bridge._editor_font_family=next(iter(self.fonts.values()),'');self.bridge.fontsChanged.emit()
+            except Exception:
+                from .diagnostics import failure
+                failure('Preparing inline text')
+                if not had_document and self.doc is not None:
+                    self._detach();self.doc.deleteLater();self.doc=None;self._ready=False
+                self._fail('본문 편집을 준비하지 못했어요. 원문은 유지돼요. 다른 글꼴을 선택하거나 다시 시도해 주세요.')
+            finally:self._guard=False
+        def failed(message):
+            if token==self.generation:self._fail(message)
+        self.bridge.command('editor_fonts',{'page':target['page'],'requests':self._requests(),
+            'source':self.bridge._font_choice,'path':self.bridge._font_path,
+            'block_id':target.get('id',-1) if not self._background else -1},got,guarded=True,error_callback=failed)
+    def _format(self,name,size,color,flags):
+        fmt=QTextCharFormat();font=QFont(self.fonts.get(name,''));font.setPointSizeF(size*.75)
+        styles=QFontDatabase.styles(font.family())
+        if styles:font.setStyleName(styles[0])
+        if self.bridge._font_choice=='original':font.setBold(bool(flags&16));font.setItalic(bool(flags&2))
+        font.setStyleStrategy(QFont.PreferDefault);font.setHintingPreference(QFont.PreferNoHinting)
+        fmt.setFont(font);fmt.setForeground(QColor(color));fmt.setProperty(ORIGIN,name);fmt.setProperty(SIZE,size);fmt.setProperty(FLAGS,flags)
+        return fmt
+    def _build(self):
+        self.doc=QTextDocument(self);self.doc.setDocumentMargin(0);self.doc.documentLayout().setPaintDevice(self.device)
+        cursor=QTextCursor(self.doc);cursor.beginEditBlock()
+        if self.target.get('textLines') and self.bridge._font_choice=='original':
+            build_lines(self,cursor)
+        else:
+            for run in self.target.get('runs',[]) or [self.target]:
+                fmt=self._format(run.get('font',''),run.get('size',self._size),'#%06x'%run.get('color',0x202124),run.get('flags',0))
+                cursor.insertText(run.get('text',''),fmt)
+        cursor.endEditBlock();first=QTextCursor(self.doc);first.setPosition(0);self.doc.setDefaultFont(first.charFormat().font())
+        self.doc.setTextWidth(self._width);self.doc.clearUndoRedoStacks()
+        self.doc.contentsChanged.connect(self._contents_changed)
+        self.doc.documentLayout().documentSizeChanged.connect(self._measure)
+        # Align the first original baseline, retaining the PDF's starting position.
+        first=self.doc.begin().layout()
+        if first.lineCount() and self.target.get('origin'):
+            self._offset=self.target['origin'][1]-self.target['rect'][1]-first.position().y()-first.lineAt(0).y()-first.lineAt(0).ascent()
+    def _reformat(self):
+        cursor=QTextCursor(self.doc);cursor.beginEditBlock()
+        for pos,length,text,old in self._fragments():
+            name=old.property(ORIGIN) or self.target.get('font','')
+            fmt=self._format(name,float(old.property(SIZE) or self._size),old.foreground().color().name(),int(old.property(FLAGS) or 0))
+            if old.hasProperty(SPACING):
+                fmt.setProperty(SPACING,old.property(SPACING))
+                if self.bridge._font_choice=='original':
+                    font=fmt.font();font.setKerning(False);font.setStyleStrategy(QFont.PreferNoShaping);fmt.setFont(font)
+                    fmt.setFontLetterSpacingType(QFont.AbsoluteSpacing);fmt.setFontLetterSpacing(float(old.property(SPACING)))
+            cursor.setPosition(pos);cursor.setPosition(pos+length,QTextCursor.KeepAnchor);cursor.setCharFormat(fmt)
+        cursor.endEditBlock()
+    def _invalid(self):
+        missing=set()
+        for pos,length,text,fmt in self._fragments():
+            font=self.raw.get('__fallback__' if fmt.property(FALLBACK) else fmt.property(ORIGIN) or self.target.get('font',''))
+            for char in text:
+                if not char.isspace() and (not font or not font.supportsCharacter(ord(char))):missing.add(char)
+        return ''.join(sorted(missing))
+    @Slot()
+    def useFallback(self):
+        missing=self._invalid()
+        if not self.canUseFallback:return
+        self.generation+=1;token=self.generation;self.timer.stop();self._loading=True
+        self._status='추가한 글자를 표시할 글꼴을 준비하는 중…';self.watchdog.start();self.changed.emit()
+        def got(result):
+            if token!=self.generation or self.bridge.closed:return
+            try:
+                if result.get('stale'):raise ValueError('문서가 바뀌었어요. 본문을 다시 선택해 주세요.')
+                entry=result['fonts'][0]
+                if entry['error']:raise ValueError(entry['error'])
+                data=QByteArray(entry['data']);key=hashlib.sha256(entry['data']).hexdigest()
+                if key not in self.ids:self.ids[key]=QFontDatabase.addApplicationFontFromData(data)
+                families=QFontDatabase.applicationFontFamilies(self.ids[key])
+                if not families:raise ValueError('대체 글꼴을 표시할 수 없어요. 글꼴 파일을 직접 선택해 주세요.')
+                raw=QRawFont();raw.loadFromData(data,20,QFont.PreferNoHinting);self.raw['__fallback__']=raw
+                self._guard=True;cursor=QTextCursor(self.doc);cursor.beginEditBlock()
+                try:
+                    for pos,length,text,fmt in self._fragments():
+                        original=self.raw.get('__fallback__' if fmt.property(FALLBACK) else fmt.property(ORIGIN) or self.target.get('font',''))
+                        offset=0
+                        for char in text:
+                            count=len(char.encode('utf-16-le'))//2
+                            if not char.isspace() and (not original or not original.supportsCharacter(ord(char))):
+                                replacement=QTextCharFormat(fmt);font=fmt.font();font.setFamilies(families);font.setStyleName('')
+                                font.setLetterSpacing(QFont.AbsoluteSpacing,0);replacement.setFont(font);replacement.setProperty(FALLBACK,True)
+                                cursor.setPosition(pos+offset);cursor.setPosition(pos+offset+count,QTextCursor.KeepAnchor);cursor.setCharFormat(replacement)
+                            offset+=count
+                finally:cursor.endEditBlock();self._guard=False
+                self._loading=False;self._font_error=False;self._edited=True;self.watchdog.stop()
+                self._status='원본에 없는 글자만 대체 글꼴로 표시했어요. 적용하면 이 모습으로 저장돼요.';self._measure()
+            except Exception as exc:self._fail(str(exc))
+        self.bridge.command('editor_fonts',{'page':self.target['page'],'requests':{'__fallback__':missing},
+            'source':'default','path':'','block_id':-1},got,guarded=True,error_callback=lambda message:self._fail(message) if token==self.generation else None)
+    def _contents_changed(self):
+        if self._guard:return
+        self._edited=True;missing=self._invalid()
+        if missing:
+            self._status='원본 글꼴에 없는 글자: '+missing[:20]+' · 같은 설치 글꼴을 확인하고 있어요.';self.timer.start()
+        else:
+            self._status='일부 추가 글자는 대체 글꼴로 표시하고 있어요.' if any(fmt.property(FALLBACK) for *_,fmt in self._fragments()) else ''
+            self.timer.stop()
+        self._measure();self.changed.emit()
+    def _measure(self,*args):
+        if self.doc and self.target:
+            self._height=max(self.target['rect'][3]-self.target['rect'][1],self.doc.size().height()+max(0,self._offset)+1)
+            if self._height>self._max_height():self._status='글이 페이지 밖으로 나가요. 오른쪽 손잡이로 폭을 넓히거나 글자 크기를 줄여 주세요.'
+            elif not self._status:
+                for rect in self.target.get('neighbors',[]):
+                    x,y=self.target['rect'][:2]
+                    if rect[1]>=self.target['rect'][3]-.5 and y+self._height>rect[1] and x+self._width>rect[0] and x<rect[2]:
+                        self._status='아래 본문과 겹쳐요. 편집 영역의 폭이나 글자 크기를 조정해 주세요.';break
+        self.changed.emit()
+    @Slot(QObject,int)
+    def attach(self,wrapper,page):
+        if self.doc is not None and self.target.get('page')==page:
+            self._wrappers=[pair for pair in self._wrappers if isValid(pair[0])]
+            if not any(w is wrapper for w,blank in self._wrappers):
+                self._wrappers.append((wrapper,QTextDocument(wrapper)))
+            wrapper.setTextDocument(self.doc)
+            # QQuickTextEdit may set its default width; keep base PDF-point coordinates.
+            self.doc.documentLayout().setPaintDevice(self.device);self.doc.setTextWidth(self._width)
+    @Slot(float)
+    def setWidth(self,width):
+        if not self.doc:return
+        self._width=max(20,min(float(width),self.target.get('pageWidth',20000)-self.target['rect'][0]))
+        self.widthChanged.emit()
+        self.doc.setTextWidth(self._width);self._edited=True;self._status='';self._measure()
+    @Slot(float)
+    def setSize(self,size):
+        if not self.doc or not 4<=size<=200 or abs(size-self._size)<.001:return
+        ratio=size/self._size;self._size=size;self._guard=True;cursor=QTextCursor(self.doc);cursor.beginEditBlock()
+        for pos,length,text,fmt in self._fragments():
+            value=float(fmt.property(SIZE) or size/ratio)*ratio;fmt.setProperty(SIZE,value);font=fmt.font();font.setPointSizeF(value*.75);fmt.setFont(font)
+            if fmt.hasProperty(SPACING):
+                spacing=float(fmt.property(SPACING))*ratio;fmt.setProperty(SPACING,spacing)
+                if self.bridge._font_choice=='original':fmt.setFontLetterSpacing(spacing)
+            cursor.setPosition(pos);cursor.setPosition(pos+length,QTextCursor.KeepAnchor);cursor.setCharFormat(fmt)
+        block=self.doc.begin()
+        while block.isValid():
+            fmt=block.blockFormat()
+            if fmt.lineHeight()>0:
+                fmt.setLineHeight(fmt.lineHeight()*ratio,fmt.lineHeightType());QTextCursor(block).setBlockFormat(fmt)
+            block=block.next()
+        cursor.endEditBlock();self._guard=False;self._edited=True;self._offset=0;self._status='';self._measure()
+    def pdf_bytes(self):
+        if not self.doc.toPlainText().strip():return b''
+        data=QByteArray();buffer=QBuffer(data);buffer.open(QIODevice.WriteOnly)
+        # QPdfWriter rounds its MediaBox to integer points. Round outward and
+        # crop on insertion, otherwise stretching to the fractional target
+        # silently changes character positions after applying the edit.
+        writer=QPdfWriter(buffer);writer.setResolution(72);writer.setPageSize(QPageSize(QSizeF(math.ceil(self._width),math.ceil(self._height)),QPageSize.Point));writer.setPageMargins(QMarginsF(0,0,0,0));writer.setCreator('YoonDF 0.9.2')
+        painter=QPainter(writer)
+        if not painter.isActive():raise ValueError('편집 내용을 PDF로 만들지 못했어요.')
+        painter.translate(0,self._offset);self.doc.drawContents(painter,QRectF(0,0,self._width,self._height-self._offset));painter.end();buffer.close()
+        return bytes(data)
+    def apply(self):
+        if not self.canApply:return
+        if not self._edited and self.bridge._font_choice=='original':self.bridge.textCommitted.emit();return
+        target=self.target;rect=list(target['rect']);rect[2]=rect[0]+self._width;rect[3]=rect[1]+self._height
+        try:data=self.pdf_bytes()
+        except Exception as exc:self._status=str(exc);self.changed.emit();self.applyFailed.emit();return
+        self.bridge._busy=True;self.bridge.stateChanged.emit()
+        def done(state):self.bridge.update_state(state);self.bridge.set_status('화면에서 편집한 내용을 적용했어요. Ctrl+S로 저장하세요.');self.bridge.textCommitted.emit()
+        def failed(message):self.bridge._busy=False;self.bridge.stateChanged.emit();self._status=message;self.changed.emit();self.applyFailed.emit()
+        self.bridge.command('replace_pdf_text',{'page':target['page'],'block_id':target['id'],'fragment':data,'rect':rect,
+            'session':target['session'],'revision':target['revision']},done,error_callback=failed)
+    def dispose(self):
+        self.timer.stop();self.watchdog.stop()
+        self._detach()
+        for id in self.ids.values():
+            if id>=0:QFontDatabase.removeApplicationFont(id)
