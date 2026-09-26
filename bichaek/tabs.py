@@ -27,11 +27,17 @@ class EngineHub(QObject):
         self.retired = []
         self.callbacks = {}
         self.serial = 0
+        self.failed = False
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.poll)
         self.timer.start(20)
 
     def command(self, owner, op, args=None, callback=None, priority=0, guarded=False, error_callback=None):
+        if self.failed:
+            if op not in ('close_document','quit'):
+                message='PDF 처리기가 종료됐어요. 입력 중인 글을 복사해 보관한 뒤 윤DF를 다시 열어 주세요.'
+                QTimer.singleShot(0,lambda:(error_callback or owner.failure)(message) if not owner.closed else None)
+            return
         self.serial += 1
         self.callbacks[self.serial] = (owner, callback, error_callback)
         msg = {"id": self.serial, "document": owner.document_id, "op": op,
@@ -42,7 +48,7 @@ class EngineHub(QObject):
     def poll(self):
         for _ in range(60):
             try: msg = self.outbox.get_nowait()
-            except queue.Empty: break
+            except (queue.Empty, EOFError, OSError): break
             owner, success, error = self.callbacks.pop(msg["id"], (None, None, None))
             if owner is None: continue
             # Callbacks still run for a closed tab so outstanding shared frames
@@ -55,6 +61,20 @@ class EngineHub(QObject):
             if not owner.closed:
                 owner.poll_ocr()
                 owner.poll_merge()
+        if not self.failed and self.process.exitcode is not None:
+            self.failed=True
+            message='PDF 처리기가 예기치 않게 종료됐어요. 입력 중인 글은 유지했어요. 복사해 보관한 뒤 윤DF를 다시 열어 주세요.'
+            callbacks=list(self.callbacks.values());self.callbacks.clear()
+            for owner,success,error in callbacks:
+                if owner.closed:continue
+                if error:error(message)
+            for owner in tuple(self.controllers):
+                if not owner.closed:
+                    owner._busy=False;owner._render_queue.clear();owner.stateChanged.emit()
+                    owner.liveEditor.generation+=1;owner.liveEditor.timer.stop();owner.liveEditor.resume.stop();owner.liveEditor._pending_font=None
+                    owner.liveEditor._fail(message)
+                    owner.set_status(message)
+            if self.controllers:self.controllers[0].showError.emit(message)
         owners = {entry[0] for entry in self.callbacks.values()}
         for owner in self.retired[:]:
             if owner not in owners:
@@ -63,6 +83,7 @@ class EngineHub(QObject):
         self.pump()
 
     def pump(self):
+        if self.failed:return
         for owner in self.controllers:
             if owner.active and not owner.closed: owner._pump_render()
 
@@ -77,6 +98,9 @@ class EngineHub(QObject):
             self.process.join(timeout=2)
         self.frames.close()
         self.callbacks.clear()
+        # A dead worker cannot drain its input pipe. Do not wait forever for
+        # the queue's feeder to flush abandoned messages during app exit.
+        self.inbox.cancel_join_thread()
         self.inbox.close()
         self.outbox.close()
 

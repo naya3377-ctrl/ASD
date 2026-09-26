@@ -341,10 +341,10 @@ class Document(AnnotationOperations, ImageObjectOperations):
             # uncovered characters are ones an earlier job already found
             # nowhere; typing does not start a new font process each time.
             if entry and extra<=entry['lacking']:
-                result.append({'name':name,'data':entry['data'],'family':entry['family'],'error':'','partial':bool(extra)})
+                result.append({'name':name,'data':entry['data'],'family':entry['family'],'error':'','partial':bool(extra),'label':entry.get('label','')})
             else:misses[name]=text
         if misses:
-            prepared=run_job({'operation':'prepare','snapshot':snapshot_fonts(self.pdf,page),
+            prepared=run_job({'operation':'prepare','snapshot':snapshot_fonts(self.pdf,page) if source=='original' else {},
                               'requests':misses,'source':source,'path':path})['fonts']
             for item in prepared:
                 key=(item['name'],source,path)
@@ -354,7 +354,7 @@ class Document(AnnotationOperations, ImageObjectOperations):
                     needed={ord(c) for c in misses.get(item['name'],'') if not c.isspace()}
                     old=cache.get(key)
                     lacking=(old['lacking'] if old else set())|(needed-covers if item.get('partial') else set())
-                    cache[key]={'data':item['data'],'family':item['family'],'covers':covers,'lacking':lacking}
+                    cache[key]={'data':item['data'],'family':item['family'],'covers':covers,'lacking':lacking,'label':item.get('label','')}
                 result.append(item)
         background=b''
         if block_id>=0:

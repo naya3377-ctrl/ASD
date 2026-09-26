@@ -24,7 +24,10 @@ class TextEditor(QObject):
         self._width=1.;self._height=1.;self._offset=0.;self._edited=False;self._size=14.;self._loading=False
         self._guard=False;self._font_error=False;self._fallback=False;self._auto_tried='';self._wrappers=[];self.device=QImage(1,1,QImage.Format_ARGB32)
         self.device.setDotsPerMeterX(3780);self.device.setDotsPerMeterY(3780)
-        self.timer=QTimer(self);self.timer.setSingleShot(True);self.timer.setInterval(400);self.timer.timeout.connect(self.loadFonts)
+        self._missing_stamp=None;self._missing='';self._has_fallback=False;self._support={};self._measuring=False
+        self._registered={};self._composing=False;self._pending_font=None;self._fallback_failed=False
+        self.resume=QTimer(self);self.resume.setSingleShot(True);self.resume.timeout.connect(self._resume_fonts)
+        self.timer=QTimer(self);self.timer.setSingleShot(True);self.timer.setInterval(160);self.timer.timeout.connect(lambda:self.useFallback(True))
         self.watchdog=QTimer(self);self.watchdog.setSingleShot(True);self.watchdog.setInterval(25000);self.watchdog.timeout.connect(self._timed_out)
     @Property(bool,notify=changed)
     def ready(self):return self._ready
@@ -41,7 +44,7 @@ class TextEditor(QObject):
     @Property(bool,notify=changed)
     def edited(self):return self._edited
     @Property(bool,notify=changed)
-    def canApply(self):return self._ready and not self._loading and not self._font_error and not self._invalid() and self._height<=self._max_height()+.01
+    def canApply(self):return self._ready and not self._composing and not self._loading and not self._font_error and not self._invalid() and self._height<=self._max_height()+.01
     @Property(bool,notify=changed)
     def loading(self):return self._loading
     @Property(bool,notify=changed)
@@ -55,19 +58,45 @@ class TextEditor(QObject):
         self._fail('글꼴 확인 응답이 지연됐어요. 입력 내용과 원문은 유지돼요. 다시 시도하거나 취소해 주세요.')
     @Slot()
     def retry(self):self.loadFonts()
+    @Slot(bool)
+    def setComposing(self,value):
+        self._composing=value
+        if value:self.timer.stop()
+        elif self._pending_font:self.resume.start(0)
+        elif self._ready and self._invalid():self.timer.start()
+        self.changed.emit()
+    def _resume_fonts(self):
+        if self._composing:return
+        pending=self._pending_font;self._pending_font=None
+        if pending and not self._composing:pending[0](pending[1])
+    def _invalidate_glyphs(self):
+        self._missing_stamp=None;self._support.clear()
+    def _register(self,data):
+        key=hashlib.sha256(data).hexdigest()
+        if key not in self._registered:
+            if key not in self.ids:self.ids[key]=QFontDatabase.addApplicationFontFromData(QByteArray(data))
+            families=QFontDatabase.applicationFontFamilies(self.ids[key])
+            if not families:raise ValueError('글꼴을 화면에 표시할 수 없어요. 다른 글꼴을 선택해 주세요.')
+            raw=QRawFont();raw.loadFromData(QByteArray(data),20,QFont.PreferNoHinting)
+            if not raw.isValid():raise ValueError('글꼴을 읽을 수 없어요. 다른 글꼴을 선택해 주세요.')
+            self._registered[key]=(families[0],raw)
+        return self._registered[key]
     def _max_height(self):
         return self.target.get('pageHeight',20000)-self.target.get('rect',[0,0])[1]
     def start(self,target):
         self._detach()
+        self.resume.stop();self._pending_font=None;self._composing=False;self._invalidate_glyphs()
         self.generation+=1;self.timer.stop();self.target=dict(target);self._ready=False;self._loading=False
-        self._background='';self._status='원본 글꼴을 확인하는 중…';self._edited=False;self._offset=0;self._font_error=False;self._fallback=False;self._auto_tried=''
+        self._background='';self._status='원본 글꼴을 확인하는 중…';self._edited=False;self._offset=0;self._font_error=False;self._fallback=False;self._auto_tried='';self._fallback_failed=False
         self._width=max(20,target['rect'][2]-target['rect'][0]+.5);self._height=max(10,target['rect'][3]-target['rect'][1])
-        self._size=target.get('size',14);self.fonts={};self.raw={}
+        self._size=target.get('size',14);self.fonts={}
+        fallback=self.raw.get('__fallback__');self.raw={'__fallback__':fallback} if fallback else {}
         self.widthChanged.emit()
         old=self.doc;self.doc=None
         if old:old.deleteLater()
         self.changed.emit()
     def stop(self):
+        self.resume.stop();self._pending_font=None;self._composing=False;self._invalidate_glyphs()
         self.generation+=1;self.timer.stop();self.watchdog.stop();self.target={};self._ready=False;self._loading=False;self.changed.emit()
         self._detach()
     def _detach(self):
@@ -102,6 +131,7 @@ class TextEditor(QObject):
         self._status='글꼴을 확인하는 중…';self.watchdog.start();self.changed.emit()
         def got(result):
             if token!=self.generation or self.bridge.closed:return
+            if self._composing:self.watchdog.stop();self._pending_font=(got,result);return
             if result.get('stale'):
                 self._fail('문서 상태가 바뀌었어요. 취소 후 본문을 다시 선택해 주세요.');return
             had_document=self.doc is not None
@@ -109,12 +139,8 @@ class TextEditor(QObject):
                 self.watchdog.stop();self._loading=False;errors=[]
                 for entry in result['fonts']:
                     if entry['error']:errors.append(entry['error']);continue
-                    key=hashlib.sha256(entry['data']).hexdigest()
-                    if key not in self.ids:self.ids[key]=QFontDatabase.addApplicationFontFromData(QByteArray(entry['data']))
-                    families=QFontDatabase.applicationFontFamilies(self.ids[key])
-                    if not families:errors.append('원본 글꼴을 화면에 표시할 수 없어요. 다른 글꼴을 검색해 주세요.');continue
-                    family=families[0];self.fonts[entry['name']]=family
-                    raw=QRawFont();raw.loadFromData(QByteArray(entry['data']),20,QFont.PreferNoHinting);self.raw[entry['name']]=raw
+                    family,raw=self._register(entry['data']);self.fonts[entry['name']]=family;self.raw[entry['name']]=raw
+                self._invalidate_glyphs()
                 if result.get('background'):self._background='data:image/png;base64,'+base64.b64encode(result['background']).decode('ascii')
                 if errors:
                     self._fail(' · '.join(dict.fromkeys(errors)));return
@@ -126,7 +152,7 @@ class TextEditor(QObject):
                 self.bridge._editor_font_family=next(iter(self.fonts.values()),'');self.bridge.fontsChanged.emit()
                 # Characters the chosen/original font lacks are shown in a
                 # Korean fallback right away instead of blocking the edit.
-                if self._invalid():QTimer.singleShot(0,lambda:self.useFallback(True))
+                if self._invalid():self.timer.start()
             except Exception:
                 from .diagnostics import failure
                 failure('Preparing inline text')
@@ -177,33 +203,41 @@ class TextEditor(QObject):
             cursor.setPosition(pos);cursor.setPosition(pos+length,QTextCursor.KeepAnchor);cursor.setCharFormat(fmt)
         cursor.endEditBlock()
     def _invalid(self):
+        stamp=(id(self.doc),self.doc.revision() if self.doc else -1)
+        if self._missing_stamp==stamp:return self._missing
         missing=set()
+        self._has_fallback=False
         for pos,length,text,fmt in self._fragments():
-            font=self.raw.get('__fallback__' if fmt.property(FALLBACK) else fmt.property(ORIGIN) or self.target.get('font',''))
-            for char in text:
-                if not char.isspace() and (not font or not font.supportsCharacter(ord(char))):missing.add(char)
-        return ''.join(sorted(missing))
+            fallback=bool(fmt.property(FALLBACK));self._has_fallback|=fallback
+            name='__fallback__' if fallback else fmt.property(ORIGIN) or self.target.get('font','')
+            font=self.raw.get(name)
+            for char in set(text):
+                if char.isspace():continue
+                key=(name,char)
+                if key not in self._support:self._support[key]=bool(font and font.supportsCharacter(ord(char)))
+                if not self._support[key]:missing.add(char)
+        self._missing_stamp=stamp;self._missing=''.join(sorted(missing))
+        return self._missing
     @Slot()
     def useFallback(self,automatic=False):
+        if self._composing:return
         missing=self._invalid()
         if not self.canUseFallback:return
         if automatic:
             # Never loop on characters no available font can show (emoji etc.).
-            if missing==self._auto_tried:return
+            if missing==self._auto_tried and self._font_error:return
             self._auto_tried=missing
         self.generation+=1;token=self.generation;self.timer.stop();self._loading=True
         self._status='추가한 글자를 표시할 글꼴을 준비하는 중…';self.watchdog.start();self.changed.emit()
         def got(result):
             if token!=self.generation or self.bridge.closed:return
+            if self._composing:self.watchdog.stop();self._pending_font=(got,result);return
             try:
                 if result.get('stale'):raise ValueError('문서가 바뀌었어요. 본문을 다시 선택해 주세요.')
                 entry=result['fonts'][0]
                 if entry['error']:raise ValueError(entry['error'])
-                data=QByteArray(entry['data']);key=hashlib.sha256(entry['data']).hexdigest()
-                if key not in self.ids:self.ids[key]=QFontDatabase.addApplicationFontFromData(data)
-                families=QFontDatabase.applicationFontFamilies(self.ids[key])
-                if not families:raise ValueError('대체 글꼴을 표시할 수 없어요. 글꼴 파일을 직접 선택해 주세요.')
-                raw=QRawFont();raw.loadFromData(data,20,QFont.PreferNoHinting);self.raw['__fallback__']=raw
+                family,raw=self._register(entry['data']);self.raw['__fallback__']=raw
+                self._fallback_entry=entry;self._invalidate_glyphs()
                 self._guard=True;cursor=QTextCursor(self.doc);cursor.beginEditBlock()
                 try:
                     for pos,length,text,fmt in self._fragments():
@@ -212,7 +246,7 @@ class TextEditor(QObject):
                         for char in text:
                             count=len(char.encode('utf-16-le'))//2
                             if not char.isspace() and (not original or not original.supportsCharacter(ord(char))):
-                                replacement=QTextCharFormat(fmt);font=fmt.font();font.setFamilies(families);font.setStyleName('')
+                                replacement=QTextCharFormat(fmt);font=fmt.font();font.setFamilies([family]);font.setStyleName('')
                                 font.setBold(bool(int(fmt.property(FLAGS) or 0)&16));font.setItalic(bool(int(fmt.property(FLAGS) or 0)&2))
                                 font.setLetterSpacing(QFont.AbsoluteSpacing,0);replacement.setFont(font);replacement.setProperty(FALLBACK,True)
                                 cursor.setPosition(pos+offset);cursor.setPosition(pos+offset+count,QTextCursor.KeepAnchor);cursor.setCharFormat(replacement)
@@ -220,11 +254,15 @@ class TextEditor(QObject):
                 finally:cursor.endEditBlock();self._guard=False
                 self._loading=False;self._font_error=False;self._edited=self._edited or not automatic;self.watchdog.stop()
                 left=self._invalid()
-                self._status=('이 글자는 사용할 수 있는 글꼴이 없어요: '+left[:20]) if left else '원본 글꼴에 없는 글자는 '+self._fallback_label()+'(으)로 표시했어요. 위쪽 글꼴 목록에서 바꿀 수 있어요.'
-                self._font_error=bool(left);self._measure()
+                self._status=('이 글자는 사용할 수 있는 글꼴이 없어요: '+left[:20]) if left else '원본 글꼴에 없는 글자는 '+(entry.get('label') or self._fallback_label())+'(으)로 표시했어요. 위쪽 글꼴 목록에서 바꿀 수 있어요.'
+                self._font_error=bool(left);self._fallback_failed=bool(left);self._measure()
+                if left and left!=self._auto_tried:self.timer.start()
             except Exception as exc:self._fail(str(exc))
+        raw=self.raw.get('__fallback__')
+        if raw and all(raw.supportsCharacter(ord(c)) for c in missing):
+            got({'fonts':[self._fallback_entry]});return
         self.bridge.command('editor_fonts',{'page':self.target['page'],'requests':{'__fallback__':missing},
-            'source':'default','path':self._fallback_path(),'block_id':-1},got,guarded=True,error_callback=lambda message:self._fail(message) if token==self.generation else None)
+            'source':'fallback','path':self._fallback_path(),'block_id':-1},got,guarded=True,error_callback=lambda message:self._fail(message) if token==self.generation else None)
     def _fallback_path(self):
         finder=getattr(self.bridge,'fallback_font_path',None)
         return finder() if finder else ''
@@ -235,14 +273,22 @@ class TextEditor(QObject):
         if self._guard:return
         self._edited=True;missing=self._invalid()
         if missing:
-            self._status='새 글자('+missing[:20]+')에 맞는 글꼴을 준비하는 중…';self.timer.start()
+            self._status='새 글자('+missing[:20]+')에 맞는 글꼴을 준비하는 중…'
+            if not self._composing and not self._loading:self.timer.start()
         else:
-            self._status='일부 추가 글자는 대체 글꼴로 표시하고 있어요.' if any(fmt.property(FALLBACK) for *_,fmt in self._fragments()) else ''
+            if self._fallback_failed:self._font_error=False;self._fallback_failed=False
+            self._status='일부 추가 글자는 대체 글꼴로 표시하고 있어요.' if self._has_fallback else ''
             self.timer.stop()
-        self._measure();self.changed.emit()
+        self._measure()
     def _measure(self,*args):
+        if self._guard or self._measuring:return
+        self._measuring=True
+        try:self._measure_now(*args)
+        finally:self._measuring=False
+    def _measure_now(self,*args):
         if self.doc and self.target:
-            self._height=max(self.target['rect'][3]-self.target['rect'][1],self.doc.size().height()+max(0,self._offset)+1)
+            size=args[0] if args and isinstance(args[0],QSizeF) else self.doc.size()
+            self._height=max(self.target['rect'][3]-self.target['rect'][1],size.height()+max(0,self._offset)+1)
             if self._height>self._max_height():self._status='글이 페이지 밖으로 나가요. 오른쪽 손잡이로 폭을 넓히거나 글자 크기를 줄여 주세요.'
             elif not self._status:
                 for rect in self.target.get('neighbors',[]):
@@ -288,7 +334,7 @@ class TextEditor(QObject):
         # QPdfWriter rounds its MediaBox to integer points. Round outward and
         # crop on insertion, otherwise stretching to the fractional target
         # silently changes character positions after applying the edit.
-        writer=QPdfWriter(buffer);writer.setResolution(72);writer.setPageSize(QPageSize(QSizeF(math.ceil(self._width),math.ceil(self._height)),QPageSize.Point));writer.setPageMargins(QMarginsF(0,0,0,0));writer.setCreator('YoonDF 0.9.3')
+        writer=QPdfWriter(buffer);writer.setResolution(72);writer.setPageSize(QPageSize(QSizeF(math.ceil(self._width),math.ceil(self._height)),QPageSize.Point));writer.setPageMargins(QMarginsF(0,0,0,0));writer.setCreator('YoonDF 0.9.4')
         painter=QPainter(writer)
         if not painter.isActive():raise ValueError('편집 내용을 PDF로 만들지 못했어요.')
         painter.translate(0,self._offset);self.doc.drawContents(painter,QRectF(0,0,self._width,self._height-self._offset));painter.end();buffer.close()
@@ -305,7 +351,7 @@ class TextEditor(QObject):
         self.bridge.command('replace_pdf_text',{'page':target['page'],'block_id':target['id'],'fragment':data,'rect':rect,
             'session':target['session'],'revision':target['revision']},done,error_callback=failed)
     def dispose(self):
-        self.timer.stop();self.watchdog.stop()
+        self.generation+=1;self.timer.stop();self.watchdog.stop();self.resume.stop();self._pending_font=None
         self._detach()
         for id in self.ids.values():
             if id>=0:QFontDatabase.removeApplicationFont(id)

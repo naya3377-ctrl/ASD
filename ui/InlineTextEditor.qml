@@ -36,11 +36,15 @@ Item {
         property bool bound: false
         visible: editor.live.ready; enabled: !controller.busy && editor.live.ready
         width: editor.live.width; height: Math.max(1,(editor.editData.pageHeight || 1000)-(editor.editData.rect ? editor.editData.rect[1] : 0))
-        y: editor.live.offset; padding: 0
+        // Basic.TextArea adds padding + 4 on the left even when padding is 0.
+        // Keep Qt's live document width equal to the PDF editing width on input.
+        y: editor.live.offset; padding: 0; leftPadding: 0; rightPadding: 0
+        topPadding: 0; bottomPadding: 0; textMargin: 0
         background: Item { }
         renderType: Text.NativeRendering
         textFormat: TextEdit.RichText; wrapMode: TextEdit.Wrap; selectByMouse: true; clip: false
         persistentSelection: true
+        onInputMethodComposingChanged: if(editor.editing) editor.live.setComposing(inputMethodComposing)
         onTextChanged: if(editor.editing && bound) session.text=getText(0,length)
         Connections { target: editor.session; function onVisibleChanged(){input.bound=false;if(editor.editing)Qt.callLater(editor.attach);} }
     }

@@ -215,3 +215,14 @@ Verify a clean and upgraded Windows installation, actual Task Manager Processes
 and Details labels, Korean IME composition, missing-glyph fallback, worker launches,
 font timeout/retry, and editing-close apply/save/discard/cancel before stable release.
 These native acceptance checks have not been performed in the Linux build workspace.
+
+
+## Editing stability (0.9.4)
+
+No dependency changes. The cross-build retains CPython 3.12.10, Qt/PySide 6.8.3,
+PyMuPDF 1.26.6 and fontTools 4.61.1. Validate `scripts/qa_edit_performance.py`
+with the existing UI regressions. It checks the attached TextArea's actual
+document width after IME events, 40-line paragraph stability, repeated save,
+and heartbeat latency. Native-fault logs use Python's built-in faulthandler.
+The current build has no Windows runner; native IME/GPU/installer acceptance
+remains outstanding. See docs/EDITING_FIXES_094.md.

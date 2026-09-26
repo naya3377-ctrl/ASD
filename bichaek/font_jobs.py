@@ -63,9 +63,12 @@ def prepare(payload):
                     data = original_font(source, 0, name, ''); partial = True
             else:
                 data = font_bytes(payload['path']) if payload['path'] else fitz.Font('korea').buffer
+                if payload['source']=='fallback' and not has_text(data,text):
+                    data=fitz.Font('korea').buffer
                 partial = not has_text(data, text)
             prepared, family = qt_font(data)
-            result.append({'name': name, 'data': prepared, 'family': family, 'error': '', 'partial': partial})
+            result.append({'name': name, 'data': prepared, 'family': family, 'error': '', 'partial': partial,
+                           'label':fitz.Font(fontbuffer=data).name})
         except Exception as exc:
             result.append({'name': name, 'data': b'', 'family': '', 'error': str(exc)})
     return {'fonts': result}
