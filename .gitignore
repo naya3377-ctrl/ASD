@@ -7,3 +7,4 @@ dist/
 test-output/
 *.log
 dist-out/
+release-*/
