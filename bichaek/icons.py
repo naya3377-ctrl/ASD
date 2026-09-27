@@ -34,7 +34,9 @@ class Icons(QQuickImageProvider):
         colour = colour.split("?", 1)[0]
         if not re.fullmatch(r"[0-9a-fA-F]{6}", colour or ""):
             colour = INK[1:]
-        edge = max(requestedSize.width(), requestedSize.height(), 0) or 48
+        # Icons are small. Clamp so a bad request can never allocate a huge
+        # image on the GUI thread (a runaway size froze the window before).
+        edge = min(256, max(requestedSize.width(), requestedSize.height(), 0) or 48)
         image = QImage(edge, edge, QImage.Format_ARGB32_Premultiplied)
         image.fill(Qt.transparent)
         source = self.svg(re.sub(r"[^a-z0-9-]", "", name.lower()))

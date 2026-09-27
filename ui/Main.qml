@@ -415,7 +415,7 @@ ApplicationWindow {
                     font.pixelSize: 13
                     contentItem: Text { leftPadding: 10; text: pageViewMode.displayText; font: pageViewMode.font; color: Theme.inkSoft; verticalAlignment: Text.AlignVCenter; elide: Text.ElideRight }
                     background: Rectangle { radius: Theme.radius; color: pageViewMode.hovered ? Theme.hover : "transparent"; border.color: Theme.line }
-                    indicator: Icon { name: "down"; width: 14; height: 14; x: parent.width-width-9; y: (parent.height-height)/2 }
+                    indicator: Icon { name: "down"; size: 14; x: parent.width-width-9; y: (parent.height-height)/2 }
                     opacity: enabled ? 1 : .38
                     onActivated: root.setTwoPageView(currentIndex===1)
                 }
@@ -495,7 +495,7 @@ ApplicationWindow {
             Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: Theme.line }
             RowLayout {
                 anchors.fill: parent; anchors.leftMargin: 16; anchors.rightMargin: 12; spacing: 8
-                Icon { name: "check"; width: 14; height: 14; tone: Theme.inkMuted; visible: root.tool !== "read" && root.tool !== "hand" }
+                Icon { name: "check"; size: 14; tone: Theme.inkMuted; visible: root.tool !== "read" && root.tool !== "hand" }
                 Text {
                     Layout.fillWidth: true; font.pixelSize: 12; color: Theme.inkSoft; elide: Text.ElideRight
                     text: root.hintText()

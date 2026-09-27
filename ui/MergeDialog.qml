@@ -58,7 +58,7 @@ Dialog {
             }
             Column {
                 visible: controller.mergeItems.length===0; anchors.centerIn: parent; spacing: 12
-                Icon { width: 36; height: 36; name: "merge"; anchors.horizontalCenter: parent.horizontalCenter; opacity: .65 }
+                Icon { size: 36; name: "merge"; anchors.horizontalCenter: parent.horizontalCenter; opacity: .65 }
                 Text { text: "결합할 PDF를 이곳에 끌어 놓으세요"; color: Theme.inkMuted; font.pixelSize: 14 }
             }
             DropArea { anchors.fill: parent; enabled: !controller.mergeBusy; onDropped: function(drop) { if(drop.hasUrls) controller.addMergePaths(drop.urls); } }

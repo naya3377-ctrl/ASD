@@ -25,7 +25,7 @@ Button {
         Row {
             id: contentRow; spacing: 7; anchors.verticalCenter: parent.verticalCenter
             x: control.leftAligned ? 0 : (parent.width-width)/2
-            Icon { name: control.glyph; tone: control.tone; anchors.verticalCenter: parent.verticalCenter; width: control.glyph.length ? 18 : 0 }
+            Icon { name: control.glyph; tone: control.tone; anchors.verticalCenter: parent.verticalCenter; size: control.glyph.length ? 18 : 0 }
             Text {
                 visible: control.text.length>0; text: control.text; font: control.font
                 color: control.primary ? Theme.onAccent : control.active ? Theme.accentInk : Theme.inkSoft
