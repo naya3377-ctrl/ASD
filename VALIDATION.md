@@ -448,3 +448,24 @@ xref 손상·앞뒤 쓰레기 바이트, AES/RC4 암호와 권한 조합, 링크
   다리 사이 빈틈 포함) 털 가장자리의 흰 테두리를 지웠다. `scripts/make_logo.py`로 아이콘 8종과 ICO를 만든다.
 - `scripts/qa_design.py`로 시작·읽기·주석·작성·편집(밝게/어둡게), 설정·오류·결합·정보 창을 찍어 확인했다.
   증거 화면: `docs/preview-start-0917.png`, `docs/preview-comments-0917.png`, `docs/preview-dark-0917.png`.
+
+
+# 윤DF 0.9.18 · 손 흔드는 캐릭터와 흰 바탕 · 2026-09-27
+
+- 캐릭터 그림을 `scripts/make_character.py`에서 팔꿈치 기준으로 몸통(`wave-body.png`)과
+  아래팔(`wave-forearm.png`) 두 겹으로 나눴다. 두 겹이 팔꿈치의 둥근 관절을 함께 가지고 있어서
+  아래팔을 돌려도 이음매가 벌어지지 않는다. 팔꿈치 위치는 스크립트가 출력한 비율(0.7569, 0.6167)을 쓴다.
+- `ui/WavingCharacter.qml`: 폴짝 뛰며 아래팔을 들고(OutBack), 세 번 흔들며 몸을 ±1.5도 기울이고,
+  제자리로 돌아온다(약 3초). 화면에 나타날 때와 누를 때 재생한다. 셰이더·동영상 없이 이미지 회전만 쓴다.
+- `scripts/qa_design.py`에서 시작 캐릭터가 저절로 인사를 마치고 팔 각도·높이가 0으로 돌아오는지,
+  누르면 다시 인사하는지 확인했다. 증거 화면: `test-output/design-start.png`, `design-start-wave.png`.
+- `docs/wave.gif`는 같은 QML 애니메이션을 흰 바탕에서 40ms마다 찍어 공통 96색 팔레트로 저장했다.
+- 밝은 화면 토큰: window·chrome·surface·raised·field를 `#ffffff`로, sidebar `#fafaf9`, canvas `#f1f1f0`.
+  어두운 화면은 그대로다. Windows 실기기에서의 애니메이션 부드러움(GPU·고해상도 화면)은 확인하지 못했다.
+- 실행 취소 사본 정리: `_purge_snapshots`가 사본 경로를 resolve()한 경로와만 비교해서, Windows 임시 폴더가
+  8.3 짧은 이름(`RUNNER~1`)으로 잡히면 모든 사본을 지웠다. GitHub Actions Windows 빌드의
+  `tests.test_document` 5건이 이 때문에 실패하고 있었다(run 36303058284 등). Linux에서 임시 폴더를
+  심볼릭 링크로 두면 같은 5건이 똑같이 실패하는 것을 확인했고, 양쪽을 같은 방식으로 정규화한 뒤 통과한다.
+  회귀 시험 `test_undo_when_the_temp_folder_has_two_names`는 수정 전 실패, 수정 후 통과.
+- 단위 시험 90개, `scripts/qa_*.py` 21개 모두 통과(Linux, offscreen).
+

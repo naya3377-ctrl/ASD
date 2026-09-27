@@ -28,6 +28,28 @@ class DocumentTests(unittest.TestCase):
         self.doc.save(str(path))
         return fitz.open(path)
 
+    def test_undo_when_the_temp_folder_has_two_names(self):
+        """Windows can spell the temp folder in its short form (RUNNER~1)
+        while resolve() gives the long one; cleanup then took every undo
+        snapshot for a stray and deleted it. A symbolic link splits the name
+        the same way here."""
+        real=Path(self.temp.name)/"real";real.mkdir()
+        alias=Path(self.temp.name)/"alias"
+        try:
+            alias.symlink_to(real,target_is_directory=True)
+        except (OSError,NotImplementedError):
+            self.skipTest("symbolic links are not available")
+        with patch.object(tempfile,"tempdir",str(alias)):
+            doc=Document()
+        try:
+            doc.open(str(self.path));first=doc.pdf[0].get_text()
+            doc.move_page(2,0);doc.move_page(2,0)
+            self.assertNotEqual(doc.pdf[0].get_text(),first)
+            doc.undo();doc.undo();self.assertEqual(doc.pdf[0].get_text(),first)
+            doc.redo();self.assertTrue(doc.info()["canRedo"] and doc.info()["canUndo"])
+        finally:
+            doc.close()
+
     def test_real_text_replacement_and_undo(self):
         blocks=self.doc.objects(1)["blocks"]
         block=next(b for b in blocks if b["text"]=="SECOND PAGE")

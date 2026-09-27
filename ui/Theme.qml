@@ -4,9 +4,9 @@ import QtQuick
 
 // Every interface token. The shapes follow macOS Preview: one light toolbar,
 // a soft sidebar, rounded controls, pages that float on soft shadows, quick
-// eased motion. The colours are amekaji, American casual workwear as Japan
-// wears it, and the character's own clothes: indigo denim (the one accent),
-// brown leather and brass, olive, khaki and unbleached ecru, with the
+// eased motion, on plain white. The colours are amekaji, American casual
+// workwear as Japan wears it, and the character's own clothes: indigo denim
+// (the one accent), brown leather and brass, olive and khaki, with the
 // character's near-black fur as ink. "system" follows the Windows light/dark
 // setting; the PDF page itself always stays paper white.
 QtObject {
@@ -19,27 +19,28 @@ QtObject {
     readonly property color indigoDeep:  dark ? "#a9bfe4" : "#253b63"
     readonly property color indigoSoft:  dark ? "#2b3649" : "#dfe6f1"   // faded chambray
     readonly property color leather:     dark ? "#cf9a6c" : "#8b5a35"   // bow tie, suspenders
-    readonly property color leatherSoft: dark ? "#3a2d22" : "#efe2cf"
+    readonly property color leatherSoft: dark ? "#3a2d22" : "#f5ede3"
     readonly property color brass:       dark ? "#d9b467" : "#b08a3e"   // buttons
     readonly property color olive:       dark ? "#aaa874" : "#6b6a3c"
     readonly property color burgundy:    dark ? "#e38d7c" : "#9a3b2e"
     readonly property color white: "#ffffff"
     readonly property color black: "#000000"
 
-    // Surfaces, from the back of the window to the front.
-    readonly property color window:  dark ? "#1b1815" : "#f5f0e7"   // ecru
-    readonly property color chrome:  dark ? "#23201b" : "#efe9de"   // toolbar and tab bar
-    readonly property color sidebar: dark ? "#1f1c18" : "#ebe4d7"
-    readonly property color canvas:  dark ? "#141210" : "#e4dccd"   // behind the pages
-    readonly property color surface: dark ? "#221e1a" : "#f7f3ec"   // side panels
-    readonly property color raised:  dark ? "#2d2823" : "#fffdf9"   // cards, popups, the chosen segment
-    readonly property color field:   dark ? "#1c1916" : "#fffdf9"
+    // Surfaces, from the back of the window to the front. The light theme is
+    // plain white; only the pages' backdrop is a pale grey so paper shows.
+    readonly property color window:  dark ? "#1b1815" : "#ffffff"
+    readonly property color chrome:  dark ? "#23201b" : "#ffffff"   // toolbar and tab bar
+    readonly property color sidebar: dark ? "#1f1c18" : "#fafaf9"
+    readonly property color canvas:  dark ? "#141210" : "#f1f1f0"   // behind the pages
+    readonly property color surface: dark ? "#221e1a" : "#ffffff"   // side panels
+    readonly property color raised:  dark ? "#2d2823" : "#ffffff"   // cards, popups, the chosen segment
+    readonly property color field:   dark ? "#1c1916" : "#ffffff"
     readonly property color well:    dark ? "#16ffffff" : "#0f2a2420"   // the groove of a segmented control
 
     // Lines.
-    readonly property color lineSoft:   dark ? "#34302a" : "#e2d8c8"
-    readonly property color line:       dark ? "#48403a" : "#d3c7b3"
-    readonly property color lineStrong: dark ? "#655a4e" : "#b3a58e"
+    readonly property color lineSoft:   dark ? "#34302a" : "#ebeae7"
+    readonly property color line:       dark ? "#48403a" : "#dcdad5"
+    readonly property color lineStrong: dark ? "#655a4e" : "#b8b4ac"
 
     // Text: the character's fur.
     readonly property color ink:      dark ? "#f2ebe0" : "#2a2420"

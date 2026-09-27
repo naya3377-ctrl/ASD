@@ -837,7 +837,8 @@ ApplicationWindow {
         }
 
         Rectangle {
-            id: workspace; Layout.fillWidth: true; Layout.fillHeight: true; color: root.focusReading ? root.focusBackdrop : Theme.canvas
+            // Plain white until a document is open; then the pages sit on a pale grey.
+            id: workspace; Layout.fillWidth: true; Layout.fillHeight: true; color: root.focusReading ? root.focusBackdrop : root.hasDocument ? Theme.canvas : Theme.window
             TapHandler { onPressedChanged: if(pressed) { if(textDialog.visible) root.commitEdit(null); pages.forceActiveFocus(); } }
             ListView {
                 id: pages; objectName: "pageList"; anchors.fill: parent; clip: true
@@ -937,34 +938,10 @@ ApplicationWindow {
                 ColumnLayout {
                     id: startColumn; width: Math.min(560, startScreen.width-80)
                     x: (startScreen.width-width)/2; y: Math.max(28,(startScreen.height-implicitHeight)/2-20); spacing: 0
-                    // The character greets you and offers to open a PDF.
-                    Item {
-                        Layout.fillWidth: true; Layout.preferredHeight: startArt.height+8
-                        Image {
-                            id: startArt; objectName: "startCharacter"
-                            anchors.horizontalCenter: parent.horizontalCenter; anchors.horizontalCenterOffset: -54
-                            source: "../assets/character/standing.png"; smooth: true; mipmap: true
-                            height: Math.max(170, Math.min(290, startScreen.height*.34)); width: height*sourceSize.width/Math.max(1,sourceSize.height)
-                            // A gentle bob, once, as the screen appears.
-                            y: 8
-                            SequentialAnimation on y {
-                                running: startScreen.visible; loops: 1
-                                NumberAnimation { from: 20; to: 4; duration: 420; easing.type: Easing.OutCubic }
-                                NumberAnimation { to: 8; duration: 360; easing.type: Easing.InOutSine }
-                            }
-                        }
-                        // Speech bubble with a small tail pointing at the character.
-                        Item {
-                            x: startArt.x+startArt.width+6; y: startArt.y+startArt.height*.2
-                            width: bubbleText.implicitWidth+32; height: bubbleText.implicitHeight+22
-                            Shadow { target: bubble; level: "medium" }
-                            Rectangle { x: -6; y: parent.height*.55; width: 16; height: 16; rotation: 45; color: Theme.raised; border.color: Theme.lineSoft; border.width: Theme.hairline }
-                            Rectangle {
-                                id: bubble; anchors.fill: parent; radius: height/2; color: Theme.raised; border.color: Theme.lineSoft; border.width: Theme.hairline
-                                Text { id: bubbleText; anchors.centerIn: parent; text: "PDF를 열어 볼까요?"; font.pixelSize: Theme.callout; font.weight: Font.DemiBold; color: Theme.ink }
-                            }
-                            Rectangle { x: -1; y: parent.height*.55+1; width: 12; height: 14; color: Theme.raised }
-                        }
+                    // The character hops and waves hello when the screen appears; click it for another wave.
+                    WavingCharacter {
+                        id: startArt; objectName: "startCharacter"; Layout.alignment: Qt.AlignHCenter
+                        Layout.preferredHeight: Math.max(180, Math.min(300, startScreen.height*.36)); Layout.preferredWidth: Layout.preferredHeight/ratio
                     }
                     Text {
                         objectName: "startWordmark"; Layout.alignment: Qt.AlignHCenter; Layout.topMargin: 18

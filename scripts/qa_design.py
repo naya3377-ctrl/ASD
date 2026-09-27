@@ -94,7 +94,15 @@ def main():
     try:
         for theme in ('light','dark'):
             documents.activeBridge.setThemeMode(theme);QTest.qWait(100)
-            if theme=='light':shot('start')
+            if theme=='light':
+                # The character waves hello on its own, settles, and waves again when clicked.
+                hello=item('startCharacter')
+                wait(lambda:not hello.property('playing'),timeout=10)
+                assert hello.property('armAngle')==0 and hello.property('hop')==0,'character did not settle'
+                shot('start')
+                click('startCharacter');assert hello.property('playing'),'click did not wave'
+                QTest.qWait(700);shot('start-wave')
+                wait(lambda:not hello.property('playing'),timeout=10)
             if not documents.activeBridge.document.get('count'):
                 documents.openPaths([str(report)]);c=documents.activeBridge
                 wait(lambda:c.document.get('count')==6 and c.imageUrl(0,'main') and c.textLayout(0)['chars'])
@@ -125,7 +133,7 @@ def main():
         QTest.qWait(400);shot('about')
         assert item('aboutCharacter').property('visible')
         assert not warnings,warnings
-        print('PASS: design screens saved to test-output/design-*.png; bundled fonts loaded; no QML warnings',flush=True)
+        print('PASS: design screens saved to test-output/design-*.png; the start character waves and settles; bundled fonts loaded; no QML warnings',flush=True)
     finally:
         active=documents.activeBridge;active.setAutomaticOcr(saved[0]);active.setAnnotationAuthor(saved[1]);active.setThemeMode(saved[2])
         w.setVisible(False);documents.shutdown();del engine;qInstallMessageHandler(None)

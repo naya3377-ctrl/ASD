@@ -44,6 +44,10 @@ class Document(AnnotationOperations, ImageObjectOperations):
         self._editor_font_cache = {}
         self._size_cache = {}
         self.temp = tempfile.TemporaryDirectory(prefix="bichaek-")
+        # Windows may name the temp folder in its short 8.3 form
+        # (C:\Users\KIMYOO~1\...) while resolve() gives the long one; keep
+        # one spelling so snapshots are never mistaken for strays.
+        self.temp_root = Path(self.temp.name).resolve()
 
     def close(self):
         self._display_lists.clear()
@@ -155,7 +159,7 @@ class Document(AnnotationOperations, ImageObjectOperations):
         return changed
 
     def _snapshot(self):
-        name = str(Path(self.temp.name) / (uuid.uuid4().hex + ".pdf"))
+        name = str(self.temp_root / (uuid.uuid4().hex + ".pdf"))
         self._write(name, garbage=0, encryption=fitz.PDF_ENCRYPT_KEEP)
         # Page tokens travel with history so undo/redo can reuse rendered pages.
         return name, self.state_id, list(self.page_tokens)
@@ -178,12 +182,18 @@ class Document(AnnotationOperations, ImageObjectOperations):
         ):
             Path(self.undo_stack.pop(0)[0]).unlink(missing_ok=True)
 
+    @staticmethod
+    def _path_key(path):
+        """The same file spelled the same way, whatever form the path took."""
+        return os.path.normcase(str(Path(path).resolve()))
+
     def _purge_snapshots(self):
-        keep = {x[0] for x in self.undo_stack + self.redo_stack} | self.pinned
+        keep = {self._path_key(x[0]) for x in self.undo_stack + self.redo_stack}
+        keep |= {self._path_key(x) for x in self.pinned}
         if self.pdf and self.pdf.name:
-            keep.add(str(Path(self.pdf.name).resolve()))
-        for path in Path(self.temp.name).glob("*.pdf"):
-            if str(path.resolve()) not in keep:
+            keep.add(self._path_key(self.pdf.name))
+        for path in self.temp_root.glob("*.pdf"):
+            if self._path_key(path) not in keep:
                 try:
                     path.unlink()
                 except PermissionError:

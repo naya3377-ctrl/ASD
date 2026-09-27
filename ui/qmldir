@@ -20,3 +20,4 @@ ScrollInput 1.0 ScrollInput.qml
 Segmented 1.0 Segmented.qml
 Shadow 1.0 Shadow.qml
 TextLayer 1.0 TextLayer.qml
+WavingCharacter 1.0 WavingCharacter.qml
