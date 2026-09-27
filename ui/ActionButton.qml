@@ -2,76 +2,75 @@
 import QtQuick
 import QtQuick.Controls
 
-// Every button in the app, in four Bauhaus variants:
-//  - ghost (default): no frame; hover greys, `active` becomes a yellow block
-//  - primary: red block with a hard shadow that presses in
-//  - outlined: white block with a hard shadow that presses in
-//  - activeFill: a colour for the active state (the mode bar uses one per mode)
+// Every button in the app. Emphasis is inversion, never colour:
+//  - ghost (default): no frame; a hairline frame on hover, inverted when
+//    `active` or pressed
+//  - primary: a black block that inverts on hover
+//  - outlined: a thin frame that fills black on hover
+//  - tab: text that is underlined when `active` (panel switches)
+//  - inverted: a ghost button sitting on a black bar
 Button {
     id: control
     property bool active: false
     property bool primary: false
     property bool outlined: false
+    property bool tab: false
     property bool leftAligned: false
     property bool compact: false
-    property bool round: false
-    property bool inverted: false   // ghost button sitting on a black bar
-    property bool onLight: false    // ghost button on a coloured light block (yellow): black ink in both themes
-    property color activeFill: Theme.yellow
+    property bool inverted: false
     property string glyph: ""
     property string hint: ""
     property string shortcutText: ""
     readonly property bool framed: primary || outlined
-    // Ink follows the block behind it: white on red/blue, black on yellow/white.
-    function inkOn(fill) { return fill.r*.299 + fill.g*.587 + fill.b*.114 > .6 ? Theme.black : Theme.white; }
-    readonly property color fillColor: primary ? (hovered && !down ? Theme.accentHover : Theme.accent)
-        : active ? activeFill
-        : outlined ? (hovered ? Theme.hover : Theme.raised)
-        : down ? (inverted ? "#3a3a3a" : onLight ? "#40000000" : Theme.pressed) : hovered ? (inverted ? "#2c2c2c" : onLight ? "#26000000" : Theme.hover) : "transparent"
-    readonly property color tone: primary ? Theme.inkOnAccent : active ? inkOn(activeFill) : inverted ? Theme.white : onLight ? Theme.black : Theme.icon
+    // The colours this button is drawn with, before and after inversion.
+    readonly property color paper: inverted ? Theme.chrome : Theme.surface
+    readonly property color ink: inverted ? Theme.chromeInk : Theme.ink
+    readonly property bool filled: !tab && (primary ? !(hovered && !down) : outlined ? (hovered || down) : (active || down))
+    readonly property color fillColor: filled ? ink : "transparent"
+    readonly property color tone: filled ? paper : tab && !active ? Theme.inkMuted : ink
     implicitHeight: compact ? 30 : 34
     implicitWidth: Math.max(implicitHeight, contentItem.implicitWidth + (text.length ? 26 : 16))
     leftPadding: text.length ? 13 : 8; rightPadding: text.length ? 13 : 8
-    font.pixelSize: 13
-    font.weight: primary || active ? Font.Bold : Font.Medium
-    font.letterSpacing: text.length ? .3 : 0
+    font.pixelSize: Theme.body
+    font.weight: primary || active ? Font.Bold : Font.Normal
+    font.letterSpacing: text.length ? .4 : 0
     hoverEnabled: true
     focusPolicy: Qt.TabFocus
-    opacity: enabled ? 1 : .35
+    opacity: enabled ? 1 : .3
     contentItem: Item {
         implicitWidth: contentRow.implicitWidth; implicitHeight: 20
-        // Framed buttons move with their face when pressed.
-        transform: Translate { x: control.framed && control.down ? 2 : 0; y: control.framed && control.down ? 2 : 0 }
         Row {
-            id: contentRow; spacing: 7; anchors.verticalCenter: parent.verticalCenter
+            id: contentRow; spacing: 8; anchors.verticalCenter: parent.verticalCenter
             x: control.leftAligned ? 0 : (parent.width-width)/2
             Icon { name: control.glyph; tone: control.tone; anchors.verticalCenter: parent.verticalCenter; size: control.glyph.length ? 18 : 0 }
             Text {
                 visible: control.text.length>0; text: control.text; font: control.font
-                color: control.primary ? Theme.inkOnAccent : control.active ? control.inkOn(control.activeFill) : control.inverted ? Theme.white : control.onLight ? Theme.black : Theme.ink
-                anchors.verticalCenter: parent.verticalCenter
+                color: control.tone; anchors.verticalCenter: parent.verticalCenter
             }
             Text {
                 visible: control.shortcutText.length>0 && control.leftAligned; text: control.shortcutText
-                font.pixelSize: 11; color: control.active ? control.tone : Theme.inkMuted; anchors.verticalCenter: parent.verticalCenter
+                font.family: Theme.monoFamily; font.pixelSize: Theme.label; color: control.filled ? control.paper : Theme.inkMuted
+                anchors.verticalCenter: parent.verticalCenter
             }
         }
     }
     background: Item {
-        Block {
-            anchors.fill: parent
-            radius: control.round ? height/2 : 0
-            fill: control.fillColor
-            outline: Theme.lineStrong
-            outlineWidth: control.framed || control.active ? Theme.border : 0
-            shadow: control.framed ? Theme.shadowSmall : 0
-            pressed: control.framed && control.down
-        }
-        // Keyboard focus: a blue ring standing off the button.
         Rectangle {
-            visible: control.visualFocus; anchors.fill: parent; anchors.margins: -4
-            radius: control.round ? height/2 : 0
-            color: "transparent"; border.color: Theme.focusRing; border.width: 2
+            anchors.fill: parent
+            color: control.fillColor
+            border.color: control.ink
+            border.width: control.tab ? 0 : control.framed || (control.hovered && !control.filled) ? Theme.border : 0
+        }
+        // A tab says where you are with a rule under its label.
+        Rectangle {
+            visible: control.tab && control.active
+            anchors.bottom: parent.bottom; anchors.horizontalCenter: parent.horizontalCenter
+            width: parent.width-2*control.leftPadding+6; height: Theme.borderStrong; color: control.ink
+        }
+        // Keyboard focus: a solid ring standing off the button.
+        Rectangle {
+            visible: control.visualFocus; anchors.fill: parent; anchors.margins: -3
+            color: "transparent"; border.color: control.ink; border.width: Theme.borderStrong
         }
     }
     ToolTip.visible: hovered && hint.length>0

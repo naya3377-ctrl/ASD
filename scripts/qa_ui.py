@@ -59,17 +59,23 @@ def main():
         until(lambda:bridge.document["count"]==4 and len(images.images)>=4)
         window.grabWindow().save(str(output/"reader.png"))
         # Exercise the real pointer handlers, not only the Python bridge.
-        QTest.mouseClick(window,Qt.LeftButton,Qt.NoModifier,QPoint(110,240))
-        QTest.mouseClick(window,Qt.LeftButton,Qt.ControlModifier,QPoint(110,430))
+        # Points come from the thumbnails themselves, not fixed pixels.
+        def thumb(index,fraction=.5):
+            paper=item("thumbnailPaper%d"%index);pos=paper.mapToScene(paper.boundingRect().center())
+            return QPoint(round(pos.x()),round(pos.y()+(fraction-.5)*paper.height()))
+        first,second=thumb(0),thumb(1)
+        QTest.mouseClick(window,Qt.LeftButton,Qt.NoModifier,first)
+        QTest.mouseClick(window,Qt.LeftButton,Qt.ControlModifier,second)
         app.processEvents();QTest.qWait(150)
         assert bridge.selection == [0,1], ('Ctrl+click',bridge.selection)
         # A plain click narrows to one page; dragging a multi-selection moves them all.
-        QTest.mouseClick(window,Qt.LeftButton,Qt.NoModifier,QPoint(110,240));app.processEvents();QTest.qWait(150)
+        QTest.mouseClick(window,Qt.LeftButton,Qt.NoModifier,first);app.processEvents();QTest.qWait(150)
         assert bridge.selection == [0], ('click',bridge.selection)
-        QTest.mousePress(window,Qt.LeftButton,Qt.NoModifier,QPoint(110,240))
-        for y in range(240,449,12):
-            QTest.mouseMove(window,QPoint(110,y),20)
-        QTest.mouseRelease(window,Qt.LeftButton,Qt.NoModifier,QPoint(110,448))
+        below=thumb(1,.9)   # the lower half of page 2: drop after it
+        QTest.mousePress(window,Qt.LeftButton,Qt.NoModifier,first)
+        for y in range(first.y(),below.y()+1,12):
+            QTest.mouseMove(window,QPoint(first.x(),y),20)
+        QTest.mouseRelease(window,Qt.LeftButton,Qt.NoModifier,below)
         until(lambda:bridge.document['dirty'] and not bridge.busy)
         dragged=[]
         bridge.command('objects',{'page':0},dragged.append)

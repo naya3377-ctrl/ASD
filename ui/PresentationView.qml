@@ -70,7 +70,7 @@ FocusScope {
     Timer { id: renderDelay; interval: 80; onTriggered: view.request() }
     Timer { id: hideControls; interval: 2400; onTriggered: { if(!controlsHover.hovered) view.controlsVisible=false; else restart(); } }
 
-    Rectangle { anchors.fill: parent; color: "#101713" }
+    Rectangle { anchors.fill: parent; color: Theme.black }
     Rectangle {
         id: paper; objectName: "presentationPaper"; anchors.centerIn: parent
         width: Math.max(1,Math.min(view.width-36,(view.height-36)/view.ratio)); height: width*view.ratio
@@ -83,7 +83,7 @@ FocusScope {
         Text {
             anchors.centerIn: parent; visible: !view.pageImage
             text: view.renderError ? "페이지를 표시하지 못했어요." : "페이지 불러오는 중…"
-            color: "#7d8d83"; font.pixelSize: 14
+            color: Theme.inkFaint; font.pixelSize: 14
         }
     }
     MouseArea {
@@ -115,23 +115,22 @@ FocusScope {
     Rectangle {
         anchors.top: parent.top; anchors.horizontalCenter: parent.horizontalCenter; anchors.topMargin: 12
         width: Math.min(parent.width-36,title.implicitWidth+30); height: 30
-        color: Theme.black; visible: view.controlsVisible
-        Text { id: title; anchors.fill: parent; anchors.leftMargin: 15; anchors.rightMargin: 15; verticalAlignment: Text.AlignVCenter; text: "윤DF · "+view.controller.document.name; elide: Text.ElideMiddle; font.pixelSize: 12; font.weight: Font.Bold; color: Theme.white }
+        color: Theme.black; border.color: Theme.chromeLine; border.width: Theme.hairline; visible: view.controlsVisible
+        Text { id: title; anchors.fill: parent; anchors.leftMargin: 15; anchors.rightMargin: 15; verticalAlignment: Text.AlignVCenter; text: "윤DF · "+view.controller.document.name; elide: Text.ElideMiddle; font.pixelSize: Theme.small; color: Theme.white }
     }
     Rectangle {
         id: controls; objectName: "presentationControls"
         anchors.bottom: parent.bottom; anchors.horizontalCenter: parent.horizontalCenter; anchors.bottomMargin: 14
         width: toolbar.implicitWidth+24; height: 54
-        visible: view.controlsVisible; color: Theme.white; border.color: Theme.black; border.width: Theme.border
-        Rectangle { x: Theme.shadowSmall; y: Theme.shadowSmall; z: -1; width: parent.width; height: parent.height; color: Theme.black }
+        visible: view.controlsVisible; color: Theme.black; border.color: Theme.chromeLine; border.width: Theme.hairline
         HoverHandler { id: controlsHover }
         RowLayout {
             id: toolbar; anchors.centerIn: parent; spacing: 8
-            ActionButton { objectName: "slidePreviousButton"; glyph: "left"; onLight: true; enabled: view.page>0; hint: "이전 페이지 · ← / ↑ / Page Up"; onClicked: { view.move(-1); view.showControls(); } }
-            Text { objectName: "slidePageNumber"; text: (view.page+1)+" / "+view.controller.document.count; horizontalAlignment: Text.AlignHCenter; Layout.minimumWidth: 76; color: Theme.black; font.pixelSize: 13; font.weight: Font.Black }
-            ActionButton { objectName: "slideNextButton"; glyph: "right"; onLight: true; enabled: view.page<view.controller.document.count-1; hint: "다음 페이지 · → / ↓ / Page Down / Space"; onClicked: { view.move(1); view.showControls(); } }
-            Rectangle { width: Theme.border; height: 22; color: Theme.black }
-            ActionButton { objectName: "exitPresentationButton"; text: "종료 · Esc"; primary: true; onClicked: view.exitRequested() }
+            ActionButton { objectName: "slidePreviousButton"; glyph: "left"; inverted: true; enabled: view.page>0; hint: "이전 페이지 · ← / ↑ / Page Up"; onClicked: { view.move(-1); view.showControls(); } }
+            Text { objectName: "slidePageNumber"; text: (view.page+1)+" / "+view.controller.document.count; horizontalAlignment: Text.AlignHCenter; Layout.minimumWidth: 76; color: Theme.white; font.family: Theme.monoFamily; font.pixelSize: Theme.body }
+            ActionButton { objectName: "slideNextButton"; glyph: "right"; inverted: true; enabled: view.page<view.controller.document.count-1; hint: "다음 페이지 · → / ↓ / Page Down / Space"; onClicked: { view.move(1); view.showControls(); } }
+            Rectangle { width: Theme.hairline; height: 22; color: Theme.chromeLine }
+            ActionButton { objectName: "exitPresentationButton"; text: "종료 · Esc"; inverted: true; outlined: true; onClicked: view.exitRequested() }
         }
     }
 }

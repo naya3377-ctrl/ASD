@@ -1,16 +1,15 @@
 singleton Theme 1.0 Theme.qml
 ActionButton 1.0 ActionButton.qml
 AnnotationEditor 1.0 AnnotationEditor.qml
-BauhausComboBox 1.0 BauhausComboBox.qml
-BauhausDialog 1.0 BauhausDialog.qml
-BauhausMark 1.0 BauhausMark.qml
-BauhausScrollBar 1.0 BauhausScrollBar.qml
-BauhausSlider 1.0 BauhausSlider.qml
+AppComboBox 1.0 AppComboBox.qml
+AppDialog 1.0 AppDialog.qml
+AppScrollBar 1.0 AppScrollBar.qml
+AppSlider 1.0 AppSlider.qml
 Block 1.0 Block.qml
+BrandMark 1.0 BrandMark.qml
 CommentForm 1.0 CommentForm.qml
 CommentsPanel 1.0 CommentsPanel.qml
 FontPicker 1.0 FontPicker.qml
-Geo 1.0 Geo.qml
 Icon 1.0 Icon.qml
 ImageHandles 1.0 ImageHandles.qml
 InlineTextEditor 1.0 InlineTextEditor.qml

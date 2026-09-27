@@ -41,7 +41,7 @@ Item {
             property bool chosen: imageLayer.selected===modelData.id
             x: (moving ? px : rect[0])*imageLayer.factor; y: (moving ? py : rect[1])*imageLayer.factor
             width: (moving ? pw : rect[2]-rect[0])*imageLayer.factor; height: (moving ? ph : rect[3]-rect[1])*imageLayer.factor
-            color: moving ? "#331040c0" : "transparent"; border.color: chosen ? Theme.blue : Theme.black; border.width: chosen ? 3 : 1
+            color: moving ? Theme.pageMarkFill : "transparent"; border.color: Theme.pageMark; border.width: chosen ? 2 : 1
             function begin() { px=rect[0];py=rect[1];pw=rect[2]-rect[0];ph=rect[3]-rect[1];moving=true;imageLayer.selected=modelData.id; }
             function cancel() { moving=false; }
             function commit() { if(!moving) return; var next=[px,py,px+pw,py+ph];moving=false; if(Math.abs(next[0]-rect[0])+Math.abs(next[1]-rect[1])+Math.abs(next[2]-rect[2])+Math.abs(next[3]-rect[3])>.05) controller.transformImage(modelData,next); }
@@ -66,10 +66,10 @@ Item {
             // Visible delete button on the selected image.
             Rectangle {
                 objectName: "imageDelete"+box.modelData.id
-                visible: box.chosen && !box.moving; width: 22; height: 22; radius: 11
+                visible: box.chosen && !box.moving; width: 22; height: 22
                 x: parent.width-width/2; y: -height/2
-                color: deleteArea.containsMouse ? Theme.red : "white"; border.color: Theme.black; border.width: 2
-                Text { anchors.centerIn: parent; text: "✕"; font.pixelSize: 12; font.bold: true; color: deleteArea.containsMouse ? "white" : Theme.red }
+                color: deleteArea.containsMouse ? Theme.pageMark : "white"; border.color: Theme.pageMark; border.width: 1
+                Text { anchors.centerIn: parent; text: "✕"; font.pixelSize: 12; color: deleteArea.containsMouse ? "white" : Theme.pageMark }
                 MouseArea {
                     id: deleteArea; anchors.fill: parent; anchors.margins: -3; hoverEnabled: true; enabled: !controller.busy
                     cursorShape: Qt.PointingHandCursor; onClicked: imageLayer.remove(box.modelData)
@@ -79,7 +79,7 @@ Item {
             Rectangle {
                 objectName: "imageResize"+box.modelData.id
                 visible: box.chosen; width: 12; height: 12; x: parent.width-6; y: parent.height-6
-                color: Theme.yellow; border.color: Theme.black; border.width: 2
+                color: "white"; border.color: Theme.pageMark; border.width: 2
                 MouseArea {
                     anchors.fill: parent; anchors.margins: -4; preventStealing: true; enabled: !controller.busy; cursorShape: Qt.SizeFDiagCursor
                     property point start; property real ow; property real oh

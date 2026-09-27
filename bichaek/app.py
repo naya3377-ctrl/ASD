@@ -57,9 +57,14 @@ def run_primary(relay):
     app.setOrganizationName("Bichaek")
     from . import __version__
     app.setApplicationVersion(__version__)
-    app.setFont(QFont("Malgun Gothic" if os.name == "nt" else "Noto Sans CJK KR", 10))
     root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent.parent))
-    app.setWindowIcon(QIcon(str(root / "assets" / "icon.svg")))
+    from .typefaces import install, TEXT
+    loaded = install(root / "assets" / "fonts")
+    app.setFont(QFont(TEXT if TEXT in loaded else "Malgun Gothic" if os.name == "nt" else "Noto Sans CJK KR", 10))
+    icon = QIcon()
+    for size in (16, 24, 32, 48, 64, 128, 256):
+        icon.addFile(str(root / "assets" / "icon" / f"{size}.png"))
+    app.setWindowIcon(icon)
     images = Images()
     library = Library(preferences)
     documents = Documents(images)

@@ -23,7 +23,9 @@ Qt license texts; distribution metadata and Python LICENSE.txt are preserved.
 
 The sample PDF is created by this project. Its embedded fonts come from
 MuPDF's built-in font resources; their upstream notices remain applicable.
-Application icon SVG is original source code in this project.
+The 윤DF logo and application icon are original to this project; they are drawn
+by scripts/make_logo.py from outlines of Nanum Myeongjo ExtraBold (윤) and YoonDF
+Display (DF), both under the SIL Open Font License 1.1.
 
 When distributing a compiled binary, provide corresponding application source
 and build scripts, include the license notices of the bundled runtime and
@@ -43,9 +45,21 @@ This source preview is not automatically published to a public repository.
   The full data license is installed in tessdata/LICENSE.
 - fontTools 4.61.1 source and MIT license: https://github.com/fonttools/fonttools/tree/4.61.1
   Its full license is preserved in runtime/packages/fonttools-4.61.1.dist-info/licenses/LICENSE.
-- Outfit typeface (Regular, Medium, Bold, Black), SIL Open Font License 1.1,
-  Copyright 2021 The Outfit Project Authors: https://github.com/Outfitio/Outfit-Fonts
-  Unmodified static instances from Google Fonts; the license is installed in assets/fonts/OFL.txt.
+- Interface typefaces, SIL Open Font License 1.1, from https://github.com/google/fonts
+  (licenses installed in assets/fonts/OFL-*.txt; rebuild with scripts/build_fonts.py):
+  - Nanum Myeongjo Regular and Bold, Copyright (c) 2010 NHN Corporation, with
+    Reserved Font Names including Nanum and NanumMyeongjo. Unmodified.
+  - YoonDF Display (Bold, Black, Italic): Modified Version of Playfair Display,
+    Copyright 2017 The Playfair Display Project Authors
+    (https://github.com/clauseggers/Playfair), with Reserved Font Name "Playfair
+    Display". Static instances cut to Latin, renamed as the license requires.
+  - YoonDF Text (Regular, SemiBold): Modified Version of Source Serif 4,
+    Copyright 2014-2021 Adobe (https://github.com/adobe-fonts/source-serif),
+    with Reserved Font Name 'Source'. Static instances cut to Latin, renamed as
+    the license requires.
+  - JetBrains Mono (Regular, Bold), Copyright 2020 The JetBrains Mono Project
+    Authors (https://github.com/JetBrains/JetBrainsMono). Static instances cut
+    to Latin; no Reserved Font Name.
 - NSIS installer engine: zlib/libpng license. https://nsis.sourceforge.io/License
 - Microsoft Visual C++ runtime DLLs accompany the official Qt/Python wheels;
   Microsoft runtime redistribution terms apply.
