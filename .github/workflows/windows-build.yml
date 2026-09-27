@@ -51,22 +51,28 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Work outside the checkout
+        # The payload carries a copy of the source, so it cannot sit inside it.
+        run: |
+          echo "DOWNLOADS=$RUNNER_TEMP/downloads" >> "$GITHUB_ENV"
+          echo "PAYLOAD=$RUNNER_TEMP/payload" >> "$GITHUB_ENV"
+          echo "OUTPUT=$RUNNER_TEMP/out" >> "$GITHUB_ENV"
       - name: Download pinned Windows inputs
         run: |
-          mkdir -p downloads/licenses
-          python -m pip download --dest downloads --no-deps --only-binary=:all: --platform win_amd64 --python-version 312 --implementation cp --abi cp312 PySide6-Essentials==6.8.3 shiboken6==6.8.3 PyMuPDF==1.26.6
-          python -m pip download --dest downloads --no-deps --only-binary=:all: --platform any --python-version 312 --implementation py --abi none fonttools==4.61.1
-          curl -fsSL -o downloads/python-3.12.10-embed-amd64.zip https://www.python.org/ftp/python/3.12.10/python-3.12.10-embed-amd64.zip
+          mkdir -p "$DOWNLOADS/licenses"
+          python -m pip download --dest "$DOWNLOADS" --no-deps --only-binary=:all: --platform win_amd64 --python-version 312 --implementation cp --abi cp312 PySide6-Essentials==6.8.3 shiboken6==6.8.3 PyMuPDF==1.26.6
+          python -m pip download --dest "$DOWNLOADS" --no-deps --only-binary=:all: --platform any --python-version 312 --implementation py --abi none fonttools==4.61.1
+          curl -fsSL -o "$DOWNLOADS/python-3.12.10-embed-amd64.zip" https://www.python.org/ftp/python/3.12.10/python-3.12.10-embed-amd64.zip
           for name in LGPL-3.0-only.txt GPL-3.0-only.txt Qt-GPL-exception-1.0.txt; do
-            curl -fsSL -o "downloads/licenses/$name" "https://raw.githubusercontent.com/qt/qtbase/v6.8.3/LICENSES/$name"
+            curl -fsSL -o "$DOWNLOADS/licenses/$name" "https://raw.githubusercontent.com/qt/qtbase/v6.8.3/LICENSES/$name"
           done
       - name: Check inputs against pinned hashes
         shell: python
         run: |
-          import hashlib, json, pathlib, sys
+          import hashlib, json, os, pathlib, sys
           bad = []
           for name, digest in json.loads(pathlib.Path("packaging/windows-input-sha256.json").read_text()).items():
-              path = pathlib.Path(name if name.startswith("tessdata/") else "downloads/" + name)
+              path = pathlib.Path(name) if name.startswith("tessdata/") else pathlib.Path(os.environ["DOWNLOADS"]) / name
               if not path.exists() or hashlib.sha256(path.read_bytes()).hexdigest() != digest:
                   bad.append(name)
           print("mismatch:", bad) if bad else print("all inputs match")
@@ -77,17 +83,17 @@ jobs:
           sudo apt-get update -q && sudo apt-get install -y -q nsis
       - name: Assemble and pack
         run: |
-          python packaging/assemble_windows.py downloads "$PWD/payload"
+          python packaging/assemble_windows.py "$DOWNLOADS" "$PAYLOAD"
           cd packaging
-          python -m ziglang rc /fo launcher.res launcher.rc
-          python -m ziglang cc -target x86_64-windows-gnu -O2 -municode -Wl,--subsystem,windows launcher.c launcher.res -o ../payload/YoonDF.exe
-          python -m ziglang cc -target x86_64-windows-gnu -O2 -municode -Wl,--subsystem,windows python_host.c launcher.res -lshell32 -o ../payload/runtime/YoonDF.exe
-          rm -f ../payload/*.pdb ../payload/runtime/*.pdb
-          mkdir -p ../dist-out
-          makensis -V2 -DPAYLOAD="$GITHUB_WORKSPACE/payload" -DOUTPUT="$GITHUB_WORKSPACE/dist-out/YoonDF-Setup-0.9.18-x64.exe" windows-cross.nsi
+          python -m ziglang rc /fo "$RUNNER_TEMP/launcher.res" launcher.rc
+          python -m ziglang cc -target x86_64-windows-gnu -O2 -municode -Wl,--subsystem,windows launcher.c "$RUNNER_TEMP/launcher.res" -o "$PAYLOAD/YoonDF.exe"
+          python -m ziglang cc -target x86_64-windows-gnu -O2 -municode -Wl,--subsystem,windows python_host.c "$RUNNER_TEMP/launcher.res" -lshell32 -o "$PAYLOAD/runtime/YoonDF.exe"
+          rm -f "$PAYLOAD"/*.pdb "$PAYLOAD"/runtime/*.pdb
+          mkdir -p "$OUTPUT"
+          makensis -V2 -DPAYLOAD="$PAYLOAD" -DOUTPUT="$OUTPUT/YoonDF-Setup-0.9.18-x64.exe" windows-cross.nsi
       - name: Upload offline installer
         uses: actions/upload-artifact@v4
         with:
           name: YoonDF-Setup-0.9.18-x64
-          path: dist-out/YoonDF-Setup-0.9.18-x64.exe
+          path: ${{ runner.temp }}/out/YoonDF-Setup-0.9.18-x64.exe
           compression-level: 0
