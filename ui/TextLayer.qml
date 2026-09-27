@@ -161,14 +161,22 @@ Item {
                 controller.selectCharacters(layer.pageNumber,layer.anchor,layer.caretAt(mouse.x/layer.factor,mouse.y/layer.factor));
                 if(layer.markupTool && layer.allowEdits) controller.annotateSelection(layer.markupTool);
             }
-            else if (pressedAnnotation && !layer.markupTool) controller.selectAnnotation(layer.pageNumber,pressedAnnotation.id);
+            // Already on screen: select it and bring its card into view, without scrolling the page.
+            else if (pressedAnnotation && !layer.markupTool) controller.focusAnnotation(layer.pageNumber,pressedAnnotation.id);
             else if (pressedLink && layer.linkAt(mouse.x/layer.factor,mouse.y/layer.factor)) controller.activateLink(pressedLink);
         }
         onDoubleClicked: function(mouse) { doubleClick=true; if (!pressedLink) layer.selectWord(mouse.x/layer.factor,mouse.y/layer.factor); }
         onExited: { layer.hoverLink=null; layer.hoverAnnotation=null; }
-        ToolTip.visible: containsMouse && layer.hoverLink !== null && !pressed
-        ToolTip.delay: 650
-        ToolTip.text: !layer.hoverLink ? "" : layer.hoverLink.kind === "uri" ? layer.hoverLink.uri : layer.hoverLink.kind === "page" ? (layer.hoverLink.page+1)+"페이지로 이동" : "문서 링크"
+        // Links show their target; comment marks show who wrote what, next to the pointer.
+        ToolTip {
+            id: pointerTip
+            x: Math.min(pointer.mouseX + 14, pointer.width - width); y: pointer.mouseY + 20
+            delay: 450; font.pixelSize: 12
+            visible: pointer.containsMouse && !pointer.pressed && text.length > 0
+            text: layer.hoverLink ? (layer.hoverLink.kind === "uri" ? layer.hoverLink.uri : layer.hoverLink.kind === "page" ? (layer.hoverLink.page+1)+"페이지로 이동" : "문서 링크")
+                : !layer.hoverAnnotation || !(layer.hoverAnnotation.content || layer.hoverAnnotation.author) ? ""
+                : (layer.hoverAnnotation.author ? layer.hoverAnnotation.author + " · " : "") + (layer.hoverAnnotation.content || layer.hoverAnnotation.label).slice(0,160)
+        }
     }
     Rectangle {
         visible: pointer.pressed && pointer.draggingNote

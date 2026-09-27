@@ -816,13 +816,9 @@ ApplicationWindow {
             id: commentsDock; objectName: "commentsDock"
             visible: (root.commentsOpen || annotationEditor.visible) && root.hasDocument
             Layout.preferredWidth: 350; Layout.minimumWidth: 300; Layout.maximumWidth: 350; Layout.fillWidth: false; Layout.fillHeight: true; spacing: 0
-            AnnotationEditor {
-                id: annotationEditor; controller: root.pdf
-                Layout.fillWidth: true; Layout.preferredHeight: Math.min(380,commentsDock.height*.63)
-                Layout.leftMargin: 16; Layout.rightMargin: 16; Layout.topMargin: visible ? 16 : 0
-            }
             CommentsPanel {
-                controller: root.pdf; activeTool: root.tool; allowActions: !annotationEditor.visible && !textDialog.visible
+                id: commentsPanel
+                controller: root.pdf; draft: annotationEditor; activeTool: root.tool; allowActions: !textDialog.visible
                 Layout.fillWidth: true; Layout.fillHeight: true
                 onToolRequested: function(tool) { if(tool==="closeComments") root.closeComments(); else root.useTool(tool); }
             }
@@ -867,6 +863,28 @@ ApplicationWindow {
                     background: Rectangle { radius: Theme.radiusSmall; color: Theme.field; border.color: pageInput.activeFocus ? Theme.focusRing : Theme.lineStrong } validator: IntValidator { bottom: 1; top: Math.max(1,pdf.document.count) } onAccepted: { root.goPage(parseInt(text)-1); pages.forceActiveFocus(); } }
                 Text { text: "/ " + pdf.document.count; color: Theme.inkMuted; font.pixelSize: 12 }
                 ActionButton { glyph: "right"; hint: "다음 페이지 · → / ↓ / Page Down / Space"; compact: true; enabled: pdf.currentPage<pdf.document.count-1; onClicked: root.turnPage(1) }
+            }
+        }
+    }
+
+    AnnotationEditor { id: annotationEditor; controller: root.pdf }
+
+    component CommentMark: Item {
+        property var annotation: null
+        property int page: -1
+        property real factor: 1
+        property bool strong: false
+        readonly property bool shown: !!annotation && annotation.page===page && !!annotation.rect
+        enabled: false
+        Repeater {
+            model: parent.shown ? (parent.annotation.regions && parent.annotation.regions.length ? parent.annotation.regions : [parent.annotation.rect]) : []
+            delegate: Rectangle {
+                required property var modelData
+                readonly property real f: parent.factor
+                x: modelData[0]*f-3; y: modelData[1]*f-3
+                width: (modelData[2]-modelData[0])*f+6; height: (modelData[3]-modelData[1])*f+6
+                radius: 3; color: parent.strong ? "#262e5c4d" : "transparent"
+                border.color: parent.strong ? Theme.accent : Theme.focusRing; border.width: parent.strong ? 2 : 1
             }
         }
     }
@@ -951,15 +969,10 @@ ApplicationWindow {
                             height: hit.rect ? (hit.rect[3]-hit.rect[1])*factor+4 : 0
                             color: "#66ed9a42"; border.color: "#bd7330"; border.width: 2; radius: 2
                         }
-                        Rectangle {
-                            property var annotation: pdf.selectedAnnotation
-                            property real factor: paper.width/pageCell.pdfWidth
-                            visible: root.commentsOpen && annotation.page===pageCell.index && !!annotation.rect
-                            x: annotation.rect ? annotation.rect[0]*factor-3 : 0; y: annotation.rect ? annotation.rect[1]*factor-3 : 0
-                            width: annotation.rect ? (annotation.rect[2]-annotation.rect[0])*factor+6 : 0
-                            height: annotation.rect ? (annotation.rect[3]-annotation.rect[1])*factor+6 : 0
-                            color: "transparent"; border.color: "#6c8d62"; border.width: 1; radius: 2
-                        }
+                        // The chosen comment stands out on the page; the card under the
+                        // pointer in the list is outlined more lightly.
+                        CommentMark { objectName: "selectedMark"+pageCell.index; anchors.fill: parent; z: 40; annotation: pdf.selectedAnnotation; page: pageCell.index; factor: paper.width/pageCell.pdfWidth; strong: true; visible: root.commentsOpen }
+                        CommentMark { anchors.fill: parent; z: 40; annotation: commentsPanel.hoveredItem; page: pageCell.index; factor: paper.width/pageCell.pdfWidth; visible: root.commentsOpen }
                         TextLayer {
                             controller: root.pdf
                             allowEdits: !textDialog.visible && !annotationEditor.visible

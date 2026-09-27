@@ -42,6 +42,7 @@ class Document(AnnotationOperations, ImageObjectOperations):
         self.page_tokens = []
         self._pending_tokens = None
         self._editor_font_cache = {}
+        self._size_cache = {}
         self.temp = tempfile.TemporaryDirectory(prefix="bichaek-")
 
     def close(self):
@@ -98,7 +99,21 @@ class Document(AnnotationOperations, ImageObjectOperations):
                 "editable": self.editable(), "annotatable": self.annotatable(),
                 "printable": bool(self.owner_authenticated or self.pdf.permissions & fitz.PDF_PERM_PRINT),
                 "printHighQuality": bool(self.owner_authenticated or self.pdf.permissions & fitz.PDF_PERM_PRINT_HQ),
-                "size": list(self.pdf[0].rect)[2:], "pageTokens": list(self.page_tokens)}
+                "size": list(self.pdf[0].rect)[2:], "pageTokens": list(self.page_tokens),
+                "pageSizes": self._page_sizes()}
+
+    def _page_sizes(self):
+        """Displayed size of every page, so the reader lays out mixed-size
+        documents correctly before each page has been drawn. Cached per page
+        content token; only new or changed pages are measured."""
+        sizes = []
+        for index, token in enumerate(self.page_tokens):
+            size = self._size_cache.get(token)
+            if size is None:
+                rect = self.pdf[index].rect
+                size = self._size_cache[token] = [rect.width, rect.height]
+            sizes.append(size)
+        return sizes
 
     @staticmethod
     def _token():

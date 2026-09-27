@@ -89,6 +89,8 @@ class Bridge(QObject):
         self._status = "PDF를 열어 시작하세요."
         self._busy = False
         self._annotation_pages = {}
+        self._annotation_fresh = set()   # pages loaded for the current revision
+        self._annotation_first = []
         self._annotation_focus = {}
         self._annotation_panel_open = False
         self._annotation_editor_open = False
@@ -359,7 +361,17 @@ class Bridge(QObject):
             self.auto_timer.stop()
             self._annotation_token += 1
             self._annotation_loading = False
-            self._annotation_pages.clear()
+            # After an edit the list keeps showing the previous comments while
+            # pages reload, so the reader's place and selection do not vanish.
+            tokens = state.get("pageTokens") or []
+            known = set(old_tokens)
+            reordered = len(old_tokens) != len(tokens) or any(
+                t != old_tokens[i] and t in known for i, t in enumerate(tokens))
+            if old_session != state["session"] or reordered:
+                self._annotation_pages.clear()
+            self._annotation_fresh.clear()
+            # Pages whose content changed reload first.
+            self._annotation_first = [i for i, t in enumerate(tokens) if t not in known]
             self.annotationsChanged.emit()
             self._text_layouts.clear()
             self._text_pending.clear()
@@ -680,14 +692,20 @@ class Bridge(QObject):
     @Slot(int,str,result=str)
     def imageError(self,page,kind):return self._render_errors.get((page,kind),"")
 
+    def _page_size(self, page):
+        # Rendered metrics win; otherwise the engine's size list; page 1 last.
+        sizes = self._state.get("pageSizes") or []
+        fallback = sizes[page] if 0 <= page < len(sizes) else self._state.get("size", [595, 842])
+        return self._metrics.get(self._page_token(page), fallback)
+
     @Slot(int, result=float)
     def pageRatio(self, page):
-        w, h = self._metrics.get(self._page_token(page), self._state.get("size", [595, 842]))
+        w, h = self._page_size(page)
         return h / w
 
     @Slot(int, result=float)
     def pageWidth(self, page):
-        return self._metrics.get(self._page_token(page), self._state.get("size", [595, 842]))[0]
+        return self._page_size(page)[0]
 
     @property
     def library(self):
@@ -1295,6 +1313,7 @@ class Bridge(QObject):
 
     def _receive_annotations(self, page, items):
         self._annotation_pages[page] = items
+        self._annotation_fresh.add(page)
         self.annotationsChanged.emit()
 
     @Slot(bool)
@@ -1314,17 +1333,21 @@ class Bridge(QObject):
         token = self._annotation_token
         self._annotation_loading = True
         self.annotationsChanged.emit()
-        def scan(page):
+        order = [p for p in dict.fromkeys(self._annotation_first) if p < self._state['count']]
+        first = set(order)
+        order += [p for p in range(self._state['count']) if p not in first]
+        def scan(position):
             if token != self._annotation_token or not self.active or self.closed: return
-            while page < self._state['count'] and page in self._annotation_pages: page += 1
-            if page >= self._state['count']:
+            while position < len(order) and order[position] in self._annotation_fresh: position += 1
+            if position >= len(order):
                 self._annotation_loading = False
                 self.annotationsChanged.emit()
                 return
+            page = order[position]
             def got(result):
                 if token != self._annotation_token or result.get('stale') or self.closed: return
                 self._receive_annotations(page, result['items'])
-                scan(page+1)
+                scan(position+1)
             def failed(message):
                 if token == self._annotation_token:
                     self._annotation_loading = False
@@ -1332,6 +1355,14 @@ class Bridge(QObject):
                     self.set_status('주석을 불러오지 못했어요: '+message)
             self.command('annotations_page', {'page':page}, got, priority=12, guarded=True, error_callback=failed)
         scan(0)
+
+    @Slot(int, str)
+    def focusAnnotation(self, page, identifier):
+        """Select a mark clicked on the page: open the list at its card without
+        moving the page the reader is already looking at."""
+        self._annotation_focus = {'page':page, 'id':identifier}
+        self.annotationsChanged.emit()
+        self.openComments.emit()
 
     @Slot(int, str)
     def selectAnnotation(self, page, identifier):

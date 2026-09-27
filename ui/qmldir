@@ -1,6 +1,7 @@
 singleton Theme 1.0 Theme.qml
 ActionButton 1.0 ActionButton.qml
 AnnotationEditor 1.0 AnnotationEditor.qml
+CommentForm 1.0 CommentForm.qml
 CommentsPanel 1.0 CommentsPanel.qml
 FontPicker 1.0 FontPicker.qml
 Icon 1.0 Icon.qml

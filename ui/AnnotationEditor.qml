@@ -1,49 +1,38 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import QtQuick
-import QtQuick.Controls
-import QtQuick.Layouts
 
-Rectangle {
-    id: editor; objectName: "annotationEditor"
+// The comment being written: a new note, an edit or a reply. It holds only the
+// draft; CommentForm shows it inside the list (as the top card for a new note,
+// inside the card being edited or answered). Keeping the draft here means it
+// survives list scrolling, tab switches and external file opens.
+QtObject {
+    id: draft
+    objectName: "annotationEditor"
     required property var controller
+    property bool visible: false
     property var targetData: ({})
+    property string text: ""
+    property string author: ""
     property string selectedColor: "#ffd54f"
-    visible: false; color: Theme.surface
-    implicitHeight: 330
+    readonly property string mode: targetData.mode || ""
+    readonly property bool canApply: controller.canAnnotate && (mode === "edit" || text.trim().length > 0)
+    readonly property bool changed: text !== (targetData.content || "") || selectedColor !== (targetData.color || "#ffd54f")
+
     onVisibleChanged: controller.setAnnotationEditorVisible(visible)
-    Connections { target: editor.controller; function onAnnotationCommitted() { editor.close(); } }
-    function close() { visible=false; }
-    readonly property bool canApply: controller.canAnnotate && (targetData.mode==="edit" || commentBody.text.trim().length>0)
-    function apply() { if(canApply) controller.commitAnnotation(targetData,commentBody.text,author.text,selectedColor); }
-    function compose(data) {
-        if(visible) return;
-        targetData=data; commentBody.text=data.content || ""; author.text=data.author || "";
-        selectedColor=data.color || "#ffd54f"; visible=true; commentBody.forceActiveFocus();
+    property Connections commits: Connections {
+        target: draft.controller
+        function onAnnotationCommitted() { draft.close(); }
     }
-    ScrollView {
-        id: editorScroll
-        anchors.fill: parent; clip: true; contentWidth: availableWidth
-        ColumnLayout {
-            width: editorScroll.availableWidth; spacing: 12
-            RowLayout {
-                Layout.fillWidth: true
-                Text { text: editor.targetData.mode==="reply" ? "답글 작성" : editor.targetData.mode==="edit" ? "메모 수정" : "새 메모"; font.pixelSize: 17; font.weight: Font.DemiBold; color: Theme.ink; Layout.fillWidth: true }
-                ActionButton { objectName: "cancelComment"; glyph: "close"; hint: "작성 취소 · Esc"; enabled: !editor.controller.busy; onClicked: editor.close() }
-            }
-            Text { text: (Number(editor.targetData.page || 0)+1)+"페이지 · 문서를 보면서 작성하세요"; color: Theme.inkMuted; font.pixelSize: 12 }
-            TextField { id: author; objectName: "commentAuthor"; Layout.fillWidth: true; placeholderText: "작성자"; selectByMouse: true; enabled: !controller.busy }
-            ScrollView {
-                Layout.fillWidth: true; Layout.preferredHeight: 160
-                TextArea { id: commentBody; objectName: "commentBody"; placeholderText: "메모를 입력하세요"; wrapMode: TextEdit.Wrap; textFormat: TextEdit.PlainText; selectByMouse: true; font.pixelSize: 14; enabled: !controller.busy }
-            }
-            RowLayout {
-                visible: editor.targetData.mode!=="reply"; spacing: 12
-                Repeater {
-                    model: ["#ffd54f","#8ed7ad","#7dbbe6","#ef9bc0","#bcadff"]
-                    delegate: Rectangle { required property string modelData; width: 23; height: 23; radius: 12; color: modelData; border.width: editor.selectedColor.toLowerCase()===modelData ? 2 : 0; border.color: Theme.ink; MouseArea { anchors.fill: parent; enabled: !controller.busy; onClicked: editor.selectedColor=parent.modelData } }
-                }
-            }
-            ActionButton { objectName: "applyComment"; Layout.alignment: Qt.AlignRight; text: editor.targetData.mode==="reply" ? "답글 추가" : "적용"; primary: true; enabled: editor.controller.canAnnotate && (editor.targetData.mode==="edit" || commentBody.text.trim().length>0); onClicked: editor.controller.commitAnnotation(editor.targetData,commentBody.text,author.text,editor.selectedColor) }
-        }
+
+    function close() { visible = false; }
+    function compose(data) {
+        if (visible) return;
+        targetData = data; text = data.content || ""; author = data.author || "";
+        selectedColor = data.color || "#ffd54f"; visible = true;
+    }
+    function apply() { if (canApply) controller.commitAnnotation(targetData, text, author, selectedColor); }
+    // True when this draft edits or answers the given list item.
+    function belongsTo(item) {
+        return visible && mode !== "new" && !!item && targetData.id === item.id && targetData.page === item.page;
     }
 }
