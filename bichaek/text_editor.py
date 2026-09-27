@@ -364,7 +364,7 @@ class TextEditor(QObject):
         # QPdfWriter rounds its MediaBox to integer points. Round outward and
         # crop on insertion, otherwise stretching to the fractional target
         # silently changes character positions after applying the edit.
-        writer=QPdfWriter(buffer);writer.setResolution(72);writer.setPageSize(QPageSize(QSizeF(math.ceil(self._width),math.ceil(self._height)),QPageSize.Point));writer.setPageMargins(QMarginsF(0,0,0,0));writer.setCreator('YoonDF 0.9.13')
+        writer=QPdfWriter(buffer);writer.setResolution(72);writer.setPageSize(QPageSize(QSizeF(math.ceil(self._width),math.ceil(self._height)),QPageSize.Point));writer.setPageMargins(QMarginsF(0,0,0,0));writer.setCreator('YoonDF 0.9.14')
         painter=QPainter(writer)
         if not painter.isActive():raise ValueError('편집 내용을 PDF로 만들지 못했어요.')
         painter.translate(0,self._offset);self.doc.drawContents(painter,QRectF(0,0,self._width,self._height-self._offset));painter.end();buffer.close()

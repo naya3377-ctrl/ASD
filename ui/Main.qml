@@ -46,6 +46,7 @@ ApplicationWindow {
     property bool externalOpenReady: dialogsClear && !readerMenuOpen && !tabMenu.visible && !switching
     property bool externalOpenPending: typeof externalRequests !== "undefined" && externalRequests.pending
     property bool presenting: false
+    property bool renamingTab: false   // a tab title is being edited; Esc belongs to it
     property var presentationState: null
     property bool readerMenuOpen: false
     property bool typingText: activeFocusItem instanceof TextInput || activeFocusItem instanceof TextEdit
@@ -351,7 +352,7 @@ ApplicationWindow {
     Shortcut { sequences: ["Ctrl++","Ctrl+="]; enabled: root.tabActionsEnabled; onActivated: root.zoomBy(1.15) }
     Shortcut { sequence: "Ctrl+-"; enabled: root.tabActionsEnabled; onActivated: root.zoomBy(1/1.15) }
     Shortcut { sequence: "Ctrl+0"; enabled: root.tabActionsEnabled; onActivated: root.zoom = 1 }
-    Shortcut { sequence: "Escape"; enabled: root.dialogsClear && !root.readerMenuOpen && !tabMenu.visible; onActivated: { if(root.presenting) root.endPresentation(); else if(root.focusReading) root.endFocusReading(); else root.useTool("read"); } }
+    Shortcut { sequence: "Escape"; enabled: root.dialogsClear && !root.readerMenuOpen && !tabMenu.visible && !root.renamingTab; onActivated: { if(root.presenting) root.endPresentation(); else if(root.focusReading) root.endFocusReading(); else root.useTool("read"); } }
     Shortcut { sequence: "Ctrl+Shift+R"; enabled: root.canEdit && root.tabActionsEnabled; onActivated: pdf.rotateSelected() }
     Shortcut { sequence: "Alt+Up"; enabled: root.canEdit && root.tabActionsEnabled; onActivated: pdf.moveSelected(-1) }
     Shortcut { sequence: "Alt+Down"; enabled: root.canEdit && root.tabActionsEnabled; onActivated: pdf.moveSelected(1) }
@@ -392,6 +393,33 @@ ApplicationWindow {
                         objectName: "documentTab"+index
                         readonly property bool current: index===root.tabWorkspace.activeIndex
                         property real dragOffset: 0
+                        // Like Windows Explorer: the first click selects the tab, a
+                        // second, separate click renames. A quick double click does not.
+                        property bool renaming: false
+                        property double lastClick: 0
+                        // Shown right after Enter until the engine confirms, so the title never flickers back.
+                        property string pendingName: ""
+                        readonly property bool canRename: current && !!modelData.path && root.hasDocument && root.tabActionsEnabled && !pdf.busy && !pdf.ocrBusy && !textDialog.visible
+                        readonly property string stem: String(modelData.name || "").replace(/\.pdf$/i, "")
+                        onRenamingChanged: root.renamingTab=renaming
+                        function startRename() { renaming=true; renameField.text=stem; renameField.forceActiveFocus(); renameField.selectAll(); }
+                        function finishRename(apply) {
+                            if(!renaming) return;
+                            renaming=false;
+                            var name=renameField.text.trim();
+                            if(apply && name.length && name!==stem) {
+                                pendingName=(name.toLowerCase().endsWith(".pdf") ? name : name+".pdf");
+                                root.pdf.renameFile(name);
+                                if(!root.pdf.busy) pendingName="";   // nothing started (same name)
+                            }
+                            pages.forceActiveFocus();
+                        }
+                        onCurrentChanged: { lastClick=Date.now(); if(!current) finishRename(true); }
+                        Connections {
+                            target: root.pdf; enabled: documentTab.pendingName.length>0
+                            // Confirmed (name changed) or refused (work finished without it): drop the preview.
+                            function onStateChanged() { if(!root.pdf.busy) documentTab.pendingName=""; }
+                        }
                         width: Math.min(230,Math.max(150,tabTitle.implicitWidth+62)); height: tabStrip.height
                         z: tabDrag.active ? 10 : current ? 2 : 1
                         transform: Translate { x: documentTab.dragOffset }
@@ -406,7 +434,15 @@ ApplicationWindow {
                         MouseArea {
                             id: tabMouse; anchors.fill: parent; anchors.topMargin: 6; hoverEnabled: true; acceptedButtons: Qt.LeftButton | Qt.MiddleButton
                             enabled: root.tabActionsEnabled
-                            onClicked: function(event){ if(event.button===Qt.MiddleButton) root.tabWorkspace.closeId(documentTab.modelData.id); else root.tabWorkspace.activateId(documentTab.modelData.id); }
+                            onClicked: function(event){
+                                if(event.button===Qt.MiddleButton) root.tabWorkspace.closeId(documentTab.modelData.id);
+                                else if(!documentTab.current) root.tabWorkspace.activateId(documentTab.modelData.id);
+                                else {
+                                    var now=Date.now(), quick=now-documentTab.lastClick < Qt.styleHints.mouseDoubleClickInterval;
+                                    documentTab.lastClick=now;
+                                    if(!quick && documentTab.canRename) documentTab.startRename();
+                                }
+                            }
                         }
                         DragHandler {
                             id: tabDrag; target: null; yAxis.enabled: false; enabled: root.tabActionsEnabled && tabStrip.count>1
@@ -420,12 +456,25 @@ ApplicationWindow {
                             }
                             onTranslationChanged: if(active) documentTab.dragOffset=translation.x
                         }
-                        ToolTip.visible: tabMouse.containsMouse && !tabDrag.active; ToolTip.delay: 700; ToolTip.text: (modelData.path || "새 문서")+"\n끌어서 순서를 바꿀 수 있어요."
+                        ToolTip.visible: tabMouse.containsMouse && !tabDrag.active && !renaming; ToolTip.delay: 700
+                        ToolTip.text: (modelData.path || "새 문서")+"\n끌어서 순서를 바꿀 수 있어요."+(canRename ? "\n한 번 더 클릭하면 파일 이름을 바꿀 수 있어요." : "")
                         RowLayout {
                             anchors.fill: parent; anchors.topMargin: 7; anchors.leftMargin: 12; anchors.rightMargin: 4; spacing: 8
                             // Unsaved: red circle. Working: blue square.
                             Geo { kind: documentTab.modelData.dirty ? "circle" : "square"; size: 7; color: documentTab.modelData.dirty ? Theme.red : documentTab.modelData.busy ? Theme.blue : "transparent" }
-                            Text { id: tabTitle; text: documentTab.modelData.name; Layout.fillWidth: true; elide: Text.ElideMiddle; color: documentTab.current ? Theme.ink : "#c4c4c4"; font.pixelSize: 12; font.weight: documentTab.current ? Font.Bold : Font.Medium }
+                            TextField {
+                                id: renameField; objectName: "tabRenameField"+documentTab.index
+                                visible: documentTab.renaming; Layout.fillWidth: true; Layout.preferredHeight: 24
+                                font.pixelSize: 12; font.weight: Font.Bold; color: Theme.black; selectByMouse: true
+                                leftPadding: 6; rightPadding: 6; topPadding: 0; bottomPadding: 0; verticalAlignment: TextInput.AlignVCenter
+                                selectionColor: Theme.yellow; selectedTextColor: Theme.black
+                                background: Rectangle { color: Theme.white; border.width: Theme.border; border.color: Theme.blue }
+                                Keys.onReturnPressed: documentTab.finishRename(true)
+                                Keys.onEnterPressed: documentTab.finishRename(true)
+                                Keys.onEscapePressed: documentTab.finishRename(false)
+                                onActiveFocusChanged: if(!activeFocus) documentTab.finishRename(true)
+                            }
+                            Text { id: tabTitle; visible: !documentTab.renaming; text: documentTab.pendingName || documentTab.modelData.name; Layout.fillWidth: true; elide: Text.ElideMiddle; color: documentTab.current ? Theme.ink : "#c4c4c4"; font.pixelSize: 12; font.weight: documentTab.current ? Font.Bold : Font.Medium }
                             ActionButton { objectName: "closeTab"+documentTab.index; glyph: "close"; compact: true; inverted: !documentTab.current; implicitWidth: 24; implicitHeight: 24; hint: "탭 닫기 · Ctrl+W"; enabled: root.tabActionsEnabled; opacity: documentTab.current || tabMouse.containsMouse || hovered ? 1 : 0; onClicked: root.tabWorkspace.closeId(documentTab.modelData.id) }
                         }
                     }
@@ -859,50 +908,17 @@ ApplicationWindow {
                 boundsBehavior: Flickable.StopAtBounds
                 readonly property var recentFiles: typeof library !== "undefined" && library.enabled ? library.recent : []
                 ColumnLayout {
-                    id: startColumn; width: Math.min(1060, startScreen.width-64)
+                    id: startColumn; width: Math.min(640, startScreen.width-64)
                     x: (startScreen.width-width)/2; y: Math.max(36,(startScreen.height-implicitHeight)/2-24); spacing: 0
-                    // A poster: headline and actions on the left, a constructed composition on blue.
-                    Block {
-                        Layout.fillWidth: true; Layout.rightMargin: Theme.shadowLarge+2
-                        implicitHeight: Math.max(420, posterText.implicitHeight+96)
-                        fill: Theme.raised; outlineWidth: Theme.borderHeavy; shadow: Theme.shadowLarge+2
-                        ColumnLayout {
-                            id: posterText; x: 48; y: 48; width: parent.width*.56-72; spacing: 0
-                            RowLayout {
-                                spacing: 10
-                                BauhausMark { size: 16 }
-                                Text { text: "윤DF · PDF 리더"; font.pixelSize: 11; font.weight: Font.Black; font.letterSpacing: 2.4; color: Theme.ink }
-                            }
-                            Text {
-                                Layout.topMargin: 26; text: "읽고,\n다듬고,\n하나로."; lineHeight: .95
-                                font.pixelSize: startScreen.width > 1100 ? 68 : 52; font.weight: Font.Black; font.letterSpacing: -2; color: Theme.ink
-                            }
-                            Text { Layout.topMargin: 22; text: "필요한 도구만 가까이. 문서에 집중하는 시간."; font.pixelSize: 15; font.weight: Font.Medium; color: Theme.inkSoft }
-                            RowLayout {
-                                spacing: 14; Layout.topMargin: 30
-                                ActionButton { glyph: "open"; text: "PDF 열기"; primary: true; implicitWidth: 146; implicitHeight: 46; font.pixelSize: 14; enabled: !pdf.busy; onClicked: pdf.chooseOpen() }
-                                ActionButton { glyph: "merge"; text: "PDF 결합"; outlined: true; implicitWidth: 146; implicitHeight: 46; font.pixelSize: 14; enabled: !pdf.busy; onClicked: pdf.showMerge() }
-                            }
-                            Text { text: "PDF를 이곳에 끌어 놓아도 열 수 있어요 · Ctrl+O"; Layout.topMargin: 18; font.pixelSize: 12; font.weight: Font.Medium; color: Theme.inkMuted }
-                        }
-                        Rectangle {
-                            id: posterArt; x: parent.width*.56; width: parent.width*.44-Theme.borderHeavy; y: Theme.borderHeavy; height: parent.height-2*Theme.borderHeavy
-                            color: Theme.blue; clip: true
-                            Rectangle { width: Theme.borderHeavy; height: parent.height; color: Theme.black; z: 5 }
-                            Image {
-                                anchors.fill: parent; fillMode: Image.Tile; opacity: .22; smooth: false
-                                source: "data:image/svg+xml;utf8," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"><circle cx="2" cy="2" r="2" fill="#ffffff"/></svg>')
-                            }
-                            readonly property real u: Math.min(width, height)
-                            Geo { kind: "circle"; size: posterArt.u*.62; color: Theme.yellow; outline: Theme.black; outlineWidth: Theme.borderHeavy; x: posterArt.width*.1; y: posterArt.height*.1 }
-                            Geo { kind: "square"; size: posterArt.u*.34; color: Theme.red; outline: Theme.black; outlineWidth: Theme.borderHeavy; rotation: 45; x: posterArt.width*.52; y: posterArt.height*.08 }
-                            Rectangle {
-                                width: posterArt.u*.36; height: width; color: Theme.black; x: posterArt.width*.5; y: posterArt.height*.56
-                                Geo { kind: "triangle"; size: parent.width*.62; color: Theme.white; anchors.centerIn: parent; anchors.verticalCenterOffset: -parent.width*.04 }
-                            }
-                            Geo { kind: "circle"; size: posterArt.u*.1; color: Theme.white; outline: Theme.black; outlineWidth: Theme.border; x: posterArt.width*.14; y: posterArt.height*.8 }
-                            Rectangle { width: posterArt.width*.46; height: Theme.borderHeavy; color: Theme.black; rotation: -32; x: posterArt.width*.02; y: posterArt.height*.74 }
-                        }
+                    // Just the name and the two ways in.
+                    Text {
+                        objectName: "startWordmark"; Layout.alignment: Qt.AlignHCenter
+                        text: "윤DF"; font.pixelSize: 84; font.weight: Font.Black; font.letterSpacing: -2.5; color: Theme.ink
+                    }
+                    RowLayout {
+                        Layout.alignment: Qt.AlignHCenter; spacing: 14; Layout.topMargin: 30
+                        ActionButton { glyph: "open"; text: "PDF 열기"; primary: true; implicitWidth: 146; implicitHeight: 46; font.pixelSize: 14; enabled: !pdf.busy; onClicked: pdf.chooseOpen() }
+                        ActionButton { glyph: "merge"; text: "PDF 결합"; outlined: true; implicitWidth: 146; implicitHeight: 46; font.pixelSize: 14; enabled: !pdf.busy; onClicked: pdf.showMerge() }
                     }
                     RowLayout {
                         visible: startScreen.recentFiles.length>0; Layout.fillWidth: true; Layout.topMargin: 44; Layout.bottomMargin: 14

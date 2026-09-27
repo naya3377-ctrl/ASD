@@ -756,6 +756,58 @@ class Document(AnnotationOperations, ImageObjectOperations):
             Path(tmp).unlink(missing_ok=True)
         return self.info()
 
+    INVALID_NAME = set('\\/:*?"<>|')
+    RESERVED_NAMES = {"CON","PRN","AUX","NUL",*[f"COM{i}" for i in range(1,10)],*[f"LPT{i}" for i in range(1,10)]}
+
+    def rename_file(self, name):
+        """Rename the open file on disk, in its folder, keeping the document open.
+
+        Unsaved edits stay in memory: a document still backed by the file is
+        first moved to a private snapshot so the handle can be released
+        (Windows refuses to rename an open file)."""
+        self.require()
+        if not self.path:
+            raise DocumentError("아직 파일로 저장되지 않은 문서예요.")
+        stem = str(name).strip()
+        if stem.lower().endswith(".pdf"): stem = stem[:-4]
+        stem = stem.rstrip(" .")
+        if not stem:
+            raise DocumentError("파일 이름을 입력해 주세요.")
+        bad = "".join(sorted({c for c in stem if c in self.INVALID_NAME or ord(c) < 32}))
+        if bad:
+            raise DocumentError("파일 이름에 쓸 수 없는 글자가 있어요: " + bad)
+        if stem.upper() in self.RESERVED_NAMES or len(stem) > 200:
+            raise DocumentError("이 이름은 파일 이름으로 쓸 수 없어요.")
+        old = Path(self.path)
+        target = old.with_name(stem + ".pdf")
+        if str(target) == str(old):
+            return self.info()
+        # A different file already there (a case-only change is the same file).
+        if target.exists() and os.path.normcase(str(target)) != os.path.normcase(str(old)):
+            raise DocumentError("같은 폴더에 같은 이름의 파일이 이미 있어요.")
+        backed = bool(self.pdf.name) and os.path.normcase(str(Path(self.pdf.name).resolve())) == os.path.normcase(str(old.resolve()))
+        if backed:
+            clean = self.state_id == self.saved_id
+            recovery = None if clean else self._snapshot()
+            self._display_lists.clear()
+            self.pdf.close()
+            try:
+                os.rename(old, target)
+            except OSError as exc:
+                self.pdf = fitz.open(recovery[0] if recovery else old)
+                if self.pdf.needs_pass: self.pdf.authenticate(self.password)
+                raise DocumentError("이름을 바꾸지 못했어요. 다른 프로그램이 파일을 쓰고 있지 않은지 확인해 주세요. (" + str(exc.strerror or exc) + ")") from exc
+            # Same bytes either way, so xrefs, page tokens and history stay valid.
+            self.pdf = fitz.open(recovery[0] if recovery else target)
+            if self.pdf.needs_pass: self.pdf.authenticate(self.password)
+        else:
+            try:
+                os.rename(old, target)
+            except OSError as exc:
+                raise DocumentError("이름을 바꾸지 못했어요. (" + str(exc.strerror or exc) + ")") from exc
+        self.path = str(target)
+        return self.info()
+
     def ocr_snapshot(self):
         self.require()
         path = self._snapshot()[0]

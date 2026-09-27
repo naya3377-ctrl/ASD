@@ -500,6 +500,24 @@ class Bridge(QObject):
             self.set_status("저장 완료 · " + state["name"])
         self.command("save", {"path": path}, done, error_callback=self.failure)
 
+    @Slot(str)
+    def renameFile(self, name):
+        """Rename the open PDF on disk from its tab, without closing it."""
+        if not self._state["count"] or self._busy or self._ocr_busy or self._text_editor_open: return
+        old = self._state["path"]
+        stem = name.strip()[:-4] if name.strip().lower().endswith(".pdf") else name.strip()
+        if stem == Path(old).stem: return
+        self._busy = True
+        self.stateChanged.emit()
+        def done(state):
+            self.update_state(state)
+            if self.library and state["path"] != old:
+                self.library.forget(old)
+                self.library.opened(state["path"], state["name"], state["count"])
+                self.remember_page()
+            self.set_status("파일 이름을 바꿨어요 · " + state["name"])
+        self.command("rename_file", {"name": name}, done, error_callback=self.failure)
+
     @Property(str, notify=preferencesChanged)
     def themeMode(self):
         value = str(self.preferences.value("themeMode", "system"))
