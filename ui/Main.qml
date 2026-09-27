@@ -365,7 +365,7 @@ ApplicationWindow {
             Layout.fillWidth: true; implicitHeight: 44; color: Theme.chrome
             RowLayout {
                 anchors.fill: parent; anchors.leftMargin: 16; anchors.rightMargin: 10; spacing: 6
-                BauhausMark { size: 13; Layout.alignment: Qt.AlignVCenter }
+                BauhausMark { size: 22; Layout.alignment: Qt.AlignVCenter }
                 Text { text: "윤DF"; font.pixelSize: 17; font.weight: Font.Black; font.letterSpacing: -.4; color: Theme.white; Layout.leftMargin: 6; Layout.rightMargin: 14 }
                 Text {
                     visible: !root.tabWorkspace; Layout.fillWidth: true; elide: Text.ElideMiddle
@@ -870,7 +870,7 @@ ApplicationWindow {
                             id: posterText; x: 48; y: 48; width: parent.width*.56-72; spacing: 0
                             RowLayout {
                                 spacing: 10
-                                BauhausMark { size: 10 }
+                                BauhausMark { size: 16 }
                                 Text { text: "윤DF · PDF 리더"; font.pixelSize: 11; font.weight: Font.Black; font.letterSpacing: 2.4; color: Theme.ink }
                             }
                             Text {

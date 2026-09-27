@@ -15,7 +15,7 @@ Dialog {
         height: 90
         Column {
             x: 26; y: 24; spacing: 6
-            Row { spacing: 10; BauhausMark { size: 12; anchors.verticalCenter: parent.verticalCenter } Text { text: "PDF 결합"; font.pixelSize: 24; font.weight: Font.Black; font.letterSpacing: -.5; color: Theme.ink } }
+            Row { spacing: 10; BauhausMark { size: 24; anchors.verticalCenter: parent.verticalCenter } Text { text: "PDF 결합"; font.pixelSize: 24; font.weight: Font.Black; font.letterSpacing: -.5; color: Theme.ink } }
             Text { text: "여러 문서를 원하는 순서로 하나의 PDF에 담으세요."; font.pixelSize: 13; color: Theme.inkMuted }
         }
         ActionButton { anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 17; glyph: "close"; hint: "닫기"; enabled: !controller.mergeBusy; onClicked: dialog.close() }

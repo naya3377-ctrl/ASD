@@ -211,7 +211,7 @@ Rectangle {
             Column {
                 visible: !comments.count && !panel.controller.annotationsLoading && !panel.draft.visible
                 anchors.centerIn: parent; width: parent.width-24; spacing: 10
-                Row { anchors.horizontalCenter: parent.horizontalCenter; spacing: 8; Geo { kind: "circle"; size: 26; color: Theme.red } Geo { kind: "square"; size: 26; color: Theme.blue; rotation: 45 } Geo { kind: "triangle"; size: 26; color: Theme.yellow } }
+                BauhausMark { anchors.horizontalCenter: parent.horizontalCenter; size: 44 }
                 Text { width: parent.width; horizontalAlignment: Text.AlignHCenter; text: "아직 주석이 없어요"; font.pixelSize: 15; font.weight: Font.Black; color: Theme.ink }
                 Text { width: parent.width; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.WordWrap; text: "글자를 선택하고 형광펜을 누르거나, 메모 도구로 페이지를 클릭해 보세요."; font.pixelSize: 12; lineHeight: 1.3; color: Theme.inkMuted }
             }
