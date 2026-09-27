@@ -41,6 +41,13 @@ def main():
             app.processEvents();QTest.qWait(30)
             if time.monotonic()-start>timeout:raise AssertionError("Timed out: "+str(errors))
         app.processEvents();QTest.qWait(100)
+    def item(name):
+        # Page delegates have no QObject parent, so walk the visual tree.
+        pending=[window.contentItem()]
+        while pending:
+            node=pending.pop()
+            if node.objectName()==name:return node
+            pending.extend(node.childItems())
     def click(name):
         item=window.findChild(QObject,name)
         assert item,name
@@ -56,6 +63,9 @@ def main():
         QTest.mouseClick(window,Qt.LeftButton,Qt.ControlModifier,QPoint(110,430))
         app.processEvents();QTest.qWait(150)
         assert bridge.selection == [0,1], ('Ctrl+click',bridge.selection)
+        # A plain click narrows to one page; dragging a multi-selection moves them all.
+        QTest.mouseClick(window,Qt.LeftButton,Qt.NoModifier,QPoint(110,240));app.processEvents();QTest.qWait(150)
+        assert bridge.selection == [0], ('click',bridge.selection)
         QTest.mousePress(window,Qt.LeftButton,Qt.NoModifier,QPoint(110,240))
         for y in range(240,449,12):
             QTest.mouseMove(window,QPoint(110,y),20)
@@ -72,20 +82,22 @@ def main():
         until(lambda:len(bridge.blocks)>0)
         window.grabWindow().save(str(output/"text-blocks.png"))
         b=next(b for b in bridge.blocks if b["text"].startswith("A document"))
-        bridge.editBlock(b);QTest.qWait(200)
+        bridge.editBlock(b);until(lambda:item("replacementText") is not None and not bridge.liveEditor.loading)
         window.grabWindow().save(str(output/"text-editor.png"))
-        editor=window.findChild(QObject,"replacementText")
-        editor.setProperty("text","Edited document")
-        window.findChild(QObject,"fontSizeInput").setProperty("text","30")
+        editor=item("replacementText")
+        # Type like a person: select all, type, let fonts for new letters arrive, then apply.
+        editor.forceActiveFocus();QTest.keyClick(window,Qt.Key_A,Qt.ControlModifier)
+        for ch in "Edited document": QTest.keyClick(window,ch)
+        until(lambda:bridge.liveEditor.canApply)
         click("applyTextButton")
         until(lambda:not bridge.busy and bridge.document["dirty"])
         until(lambda:bool(bridge.imageUrl(0,"main")))
         saved=output/"ui-edited.pdf"
         done=[]
         bridge.command("save",{"path":str(saved)},done.append)
-        until(lambda:bool(done))
+        until(lambda:bool(done));bridge.update_state(done[0])
         with fitz.open(saved) as doc:
-            assert "Edited document" in doc[0].get_text()
+            assert "Edited document" in " ".join(doc[0].get_text().split()), doc[0].get_text()[-200:]
             assert "A document" not in doc[0].get_text()
         bridge.search("Edited document")
         until(lambda:not bridge.searching)

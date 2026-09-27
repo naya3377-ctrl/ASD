@@ -1183,6 +1183,18 @@ class Bridge(QObject):
         self.edit('transform_image',{'page':data['page'],'identifier':data['id'],'rect':list(rect),
             'session':data['session'],'revision':data['revision']})
 
+    @Slot('QVariantMap')
+    def deleteImage(self, data):
+        if self._text_editor_open or self._annotation_editor_open or self._busy or self._ocr_busy: return
+        data=dict(data)
+        self._busy = True
+        self.stateChanged.emit()
+        def done(result):
+            self.update_state(result)
+            self.set_status("이미지를 삭제했어요. Ctrl+Z로 되돌릴 수 있어요.")
+        self.command('delete_image',{'page':data['page'],'identifier':data['id'],
+            'session':data['session'],'revision':data['revision']}, done, error_callback=self.failure)
+
     @Slot('QVariantMap', 'QVariantList')
     def moveAnnotation(self, data, point):
         if self._text_editor_open or self._annotation_editor_open: return
@@ -1563,7 +1575,12 @@ class Bridge(QObject):
                 if not self._hits: self.set_status("일치하는 검색 결과가 없어요.")
                 return
             def got(result):
-                if self.closed or token != self._search_token or result.get("stale"): return
+                if self.closed or token != self._search_token: return
+                if result.get("stale"):
+                    # The document changed under the search; stop instead of spinning forever.
+                    self._search_busy = False
+                    self.searchChanged.emit()
+                    return
                 if result["rects"]:
                     offset = len(self._hits)
                     self._search.append({"page": index, "count": len(result["rects"]),

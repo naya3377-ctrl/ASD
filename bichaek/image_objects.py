@@ -76,12 +76,34 @@ class ImageObjectOperations:
                           'session':self.session, 'revision':self.revision, 'legacy':True})
         return items
 
-    def transform_image(self, page, identifier, rect, session, revision):
+    def _movable_item(self, page, identifier, session, revision):
         self.require()
         if session != self.session or revision != self.revision:
             raise ValueError('문서가 변경되었어요. 이미지를 다시 선택해 주세요.')
         item = next((i for i in self.movable_images(page) if i['id']==identifier), None)
-        if not item: raise ValueError('선택한 이미지를 이동할 수 없어요.')
+        if not item: raise ValueError('선택한 이미지를 찾을 수 없어요.')
+        return item
+
+    def delete_image(self, page, identifier, session, revision):
+        """Remove a placed image from this page only.
+
+        The page's own resource name is rebound to an empty form, so content
+        streams shared with duplicated pages stay untouched and the image data
+        drops out on the next garbage-collecting save."""
+        item = self._movable_item(page, identifier, session, revision)
+        with self.transaction(pages=[page]):
+            p = self.pdf[page]
+            if item['legacy']: name, _ = self._image_form(p, int(identifier.split(':')[1]))
+            else: name = item['resource']
+            empty = self.pdf.get_new_xref()
+            self.pdf.update_object(empty, '<</Type/XObject/Subtype/Form/FormType 1/BBox[0 0 0 0]>>')
+            self.pdf.update_stream(empty, b'')
+            self.pdf.xref_set_key(self._local_resources(p), name, f'{empty} 0 R')
+        result = self.info(); result['imageFocus'] = {}
+        return result
+
+    def transform_image(self, page, identifier, rect, session, revision):
+        item = self._movable_item(page, identifier, session, revision)
         p = self.pdf[page]
         display = fitz.Rect(rect)
         if display.is_empty or not all(__import__('math').isfinite(v) for v in display):

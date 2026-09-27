@@ -121,6 +121,7 @@ ApplicationWindow {
     }
     function startPresentation() {
         if(!hasDocument || !dialogsClear || readerMenuOpen || tabMenu.visible || pdf.busy || pdf.ocrBusy || presenting) return;
+        if(focusReading) endFocusReading();
         var cell=cellForPage(pdf.currentPage);
         presentationState={owner:pdf,page:pdf.currentPage,offset:cell ? (pages.contentY-cellTop(cell))/cell.pageWidth : 0,
             horizontal:pages.contentX/Math.max(1,pages.contentWidth),visibility:visibility,x:x,y:y,width:width,height:height};
@@ -154,8 +155,45 @@ ApplicationWindow {
         });
     }
     function togglePresentation() { if(presenting) endPresentation(); else startPresentation(); }
-    onHasDocumentChanged: if(!hasDocument && presenting) endPresentation()
-    onVisibilityChanged: function(state) { if(presenting && state!==Window.FullScreen && state!==Window.Minimized) endPresentation(); }
+
+    // Focus reading (like Scrivener's composition mode): full screen, no chrome,
+    // the page column on a quiet backdrop. Column width and backdrop are kept
+    // for the session; everything else returns as it was on exit.
+    property bool focusReading: false
+    property var focusState: null
+    property real focusWidth: .62
+    property string focusTone: "dark"
+    readonly property var focusTones: ({dark:"#161a18", paper:"#e8e0cf", gray:"#595e5a"})
+    readonly property color focusBackdrop: focusTones[focusTone]
+    function startFocusReading() {
+        if(!hasDocument || !dialogsClear || readerMenuOpen || tabMenu.visible || presenting || focusReading) return;
+        var page=pdf.currentPage;
+        focusState={page:page,zoom:zoom,mode:workspaceMode,tool:tool,comments:commentsOpen,search:searchOpen,
+            visibility:visibility,x:x,y:y,width:width,height:height};
+        workspaceMode="read"; commentsOpen=false; searchOpen=false; tool="read";
+        focusReading=true; zoom=focusWidth; focusIntro.restart();
+        showFullScreen();
+        Qt.callLater(function(){ root.goPage(page); pages.forceActiveFocus(); });
+    }
+    function endFocusReading() {
+        if(!focusReading) return;
+        var state=focusState, page=pdf.currentPage;
+        focusReading=false; focusState=null;
+        if(state) {
+            zoom=state.zoom; workspaceMode=state.mode; tool=state.tool; commentsOpen=state.comments; searchOpen=state.search;
+            visibility=state.visibility;
+            if(state.visibility===Window.Windowed) { x=state.x; y=state.y; width=state.width; height=state.height; }
+        }
+        Qt.callLater(function(){ root.goPage(page); pages.forceActiveFocus(); });
+    }
+    function toggleFocusReading() { if(focusReading) endFocusReading(); else startFocusReading(); }
+    onZoomChanged: if(focusReading) focusWidth=zoom
+    onHasDocumentChanged: { if(!hasDocument && presenting) endPresentation(); if(!hasDocument && focusReading) endFocusReading(); }
+    onVisibilityChanged: function(state) {
+        if(state===Window.FullScreen || state===Window.Minimized) return;
+        if(presenting) endPresentation();
+        if(focusReading) endFocusReading();
+    }
     function saveView() {
         if (!tabWorkspace) return;
         if(presenting) endPresentation();
@@ -168,7 +206,7 @@ ApplicationWindow {
     }
     function restoreView() {
         var state=tabWorkspace.viewState, owner=pdf;
-        twoPageView=!!state.twoPage; zoom=state.zoom || 1; tool=state.tool || "read"; workspaceMode=state.mode==="edit" ? "edit" : "read"; commentsOpen=!!state.comments;
+        twoPageView=!!state.twoPage; zoom=state.zoom || 1; tool=state.tool || "read"; workspaceMode=["edit","comments"].indexOf(state.mode)>=0 ? state.mode : "read"; commentsOpen=!!state.comments;
         sidebarOpen=state.sidebar === undefined ? true : state.sidebar; searchOpen=!!state.search;
         sidebarView=state.sidebarView || "pages";
         searchInput.text=state.query === undefined ? pdf.searchQuery : state.query; pendingQuery=searchInput.text;
@@ -238,23 +276,33 @@ ApplicationWindow {
         if(tool==="editText") return textDialog.visible
             ? "다른 곳을 클릭하면 자동으로 적용돼요. 다른 문단을 누르면 바로 이어서 고칠 수 있어요 · Esc 취소 · Ctrl+S 파일 저장"
             : "고칠 문단을 클릭하세요. 다른 곳을 클릭하면 자동으로 적용돼요.";
-        if(tool==="imageMove") return "이미지를 드래그해 이동하고, 오른쪽 아래 모서리로 크기를 조절하세요.";
+        if(tool==="imageMove") return "드래그로 이동, 오른쪽 아래 모서리로 크기 조절 · ✕ 버튼·Delete·오른쪽 클릭으로 삭제 · 끌다가 오른쪽 클릭하면 취소";
         if(isMarkupTool(tool)) return "주석을 남길 글자를 드래그하세요.";
         if(tool==="note") return "페이지에서 메모를 남길 위치를 클릭하세요.";
-        if(tool==="addText" || tool==="image") return "페이지 위에서 편집할 영역을 드래그하세요.";
+        if(tool==="addText") return textDialog.visible ? "글자를 입력하세요. 다른 곳을 클릭하면 자동으로 적용돼요 · Esc 취소" : "글자를 넣을 자리를 드래그해서 상자를 만드세요.";
+        if(tool==="image") return "이미지를 넣을 자리를 드래그하세요.";
         if(pdf.pageTextState==="restricted") return "문서 작성자가 텍스트 복사를 제한했어요.";
         if(pdf.ocrBusy) return "스캔의 글자를 인식하고 있어요. 문서는 계속 읽을 수 있습니다.";
         return "이 페이지에는 선택할 문자층이 없어요. OCR로 글자를 인식할 수 있습니다.";
     }
+    // Three modes: 읽기 (page only), 주석 (comment list and markup tools), 편집 (edit tools).
+    function setMode(mode) {
+        if(textDialog.visible || annotationEditor.visible) return;
+        workspaceMode=mode; commentsOpen=mode==="comments";
+        useTool(mode==="edit" ? "editText" : "read");
+    }
+    // The list opening from reading (a note, a mark on the page) is the comment mode.
+    function openComments() { commentsOpen=true; if(workspaceMode==="read") workspaceMode="comments"; }
     // Closing the list also drops a comment tool, returning to the mode's own tool.
     function closeComments() {
         commentsOpen=false;
+        if(workspaceMode==="comments") workspaceMode="read";
         if(tool==="note" || isMarkupTool(tool)) useTool(workspaceMode==="edit" ? "editText" : "read");
     }
     function useTool(value) {
         if(textDialog.visible || annotationEditor.visible) return;
         tool = value;
-        if (value==="note") commentsOpen=true;
+        if (value==="note") openComments();
         else if (isMarkupTool(value)) {}
         else if (["read","hand"].indexOf(value)<0) workspaceMode = "edit";
         if (value === "editText") pdf.loadBlocks(pdf.currentPage);
@@ -283,7 +331,9 @@ ApplicationWindow {
     Shortcut { sequence: "Ctrl+T"; enabled: !!root.tabWorkspace && root.tabActionsEnabled; onActivated: root.tabWorkspace.newTab() }
     Shortcut { sequence: "F3"; enabled: root.hasDocument && root.tabActionsEnabled; onActivated: pdf.findNext(searchInput.text,1) }
     Shortcut { sequence: "Shift+F3"; enabled: root.hasDocument && root.tabActionsEnabled; onActivated: pdf.findNext(searchInput.text,-1) }
-    Shortcut { sequences: ["F5","F11","Ctrl+L"]; autoRepeat: false; enabled: root.hasDocument && root.dialogsClear; onActivated: root.togglePresentation() }
+    Shortcut { sequences: ["F5","Ctrl+L"]; autoRepeat: false; enabled: root.hasDocument && root.dialogsClear; onActivated: root.togglePresentation() }
+    // F11 leaves a slide show too (it used to toggle it); otherwise focus reading.
+    Shortcut { sequence: "F11"; autoRepeat: false; enabled: root.hasDocument && root.dialogsClear; onActivated: { if(root.presenting) root.endPresentation(); else root.toggleFocusReading(); } }
     Shortcut { sequences: ["Right","Down","PgDown","Space"]; enabled: root.pageKeysEnabled; onActivated: root.turnPage(1) }
     Shortcut { sequences: ["Left","Up","PgUp","Shift+Space"]; enabled: root.pageKeysEnabled; onActivated: root.turnPage(-1) }
     Shortcut { sequences: ["Home","Ctrl+Home"]; enabled: root.pageKeysEnabled; onActivated: root.goPage(0) }
@@ -300,13 +350,13 @@ ApplicationWindow {
     Shortcut { sequences: ["Ctrl++","Ctrl+="]; enabled: root.tabActionsEnabled; onActivated: root.zoomBy(1.15) }
     Shortcut { sequence: "Ctrl+-"; enabled: root.tabActionsEnabled; onActivated: root.zoomBy(1/1.15) }
     Shortcut { sequence: "Ctrl+0"; enabled: root.tabActionsEnabled; onActivated: root.zoom = 1 }
-    Shortcut { sequence: "Escape"; enabled: root.dialogsClear && !root.readerMenuOpen && !tabMenu.visible; onActivated: { if(root.presenting) root.endPresentation(); else root.useTool("read"); } }
+    Shortcut { sequence: "Escape"; enabled: root.dialogsClear && !root.readerMenuOpen && !tabMenu.visible; onActivated: { if(root.presenting) root.endPresentation(); else if(root.focusReading) root.endFocusReading(); else root.useTool("read"); } }
     Shortcut { sequence: "Ctrl+Shift+R"; enabled: root.canEdit && root.tabActionsEnabled; onActivated: pdf.rotateSelected() }
     Shortcut { sequence: "Alt+Up"; enabled: root.canEdit && root.tabActionsEnabled; onActivated: pdf.moveSelected(-1) }
     Shortcut { sequence: "Alt+Down"; enabled: root.canEdit && root.tabActionsEnabled; onActivated: pdf.moveSelected(1) }
 
     header: ColumnLayout {
-        objectName: "readerHeader"; visible: !root.presenting
+        objectName: "readerHeader"; visible: !root.presenting && !root.focusReading
         enabled: !(root.tabWorkspace && root.tabWorkspace.closing)
         spacing: 0
         // Row 1 · brand and document tabs. Tabs can be dragged to reorder.
@@ -402,12 +452,13 @@ ApplicationWindow {
                     implicitWidth: modeRow.implicitWidth+6; implicitHeight: 36; radius: Theme.radius+2; color: Theme.surfaceAlt; border.color: Theme.line
                     Row {
                         id: modeRow; anchors.centerIn: parent; spacing: 2
-                        ActionButton { objectName: "readModeButton"; compact: true; enabled: !textDialog.visible && !annotationEditor.visible; text: "읽기"; active: root.workspaceMode === "read"; onClicked: { root.workspaceMode="read"; root.useTool("read"); } }
-                        ActionButton { objectName: "editModeButton"; compact: true; text: "편집"; active: root.workspaceMode === "edit"; enabled: root.hasDocument && !textDialog.visible && !annotationEditor.visible; onClicked: { root.workspaceMode="edit"; root.useTool("editText"); } }
+                        ActionButton { objectName: "readModeButton"; compact: true; enabled: !textDialog.visible && !annotationEditor.visible; text: "읽기"; hint: "읽기 · 주석 목록과 편집 도구를 닫아요"; active: root.workspaceMode === "read"; onClicked: root.setMode("read") }
+                        ActionButton { objectName: "commentsModeButton"; compact: true; text: "주석"; hint: "주석 · 오른쪽에 주석 목록과 표시 도구"; active: root.workspaceMode === "comments"; enabled: root.hasDocument && !textDialog.visible && !annotationEditor.visible; onClicked: root.setMode("comments") }
+                        ActionButton { objectName: "editModeButton"; compact: true; text: "편집"; hint: "편집 · 본문 수정, 텍스트·이미지 추가"; active: root.workspaceMode === "edit"; enabled: root.hasDocument && !textDialog.visible && !annotationEditor.visible; onClicked: root.setMode("edit") }
                     }
                 }
-                ActionButton { visible: root.workspaceMode !== "edit"; glyph: "text"; hint: "텍스트 선택"; active: root.tool === "read"; enabled: root.hasDocument; Layout.leftMargin: 6; onClicked: root.useTool("read") }
-                ActionButton { visible: root.workspaceMode !== "edit"; glyph: "hand"; hint: "손 도구 · 끌어서 이동"; active: root.tool === "hand"; enabled: root.hasDocument; onClicked: root.useTool("hand") }
+                ActionButton { visible: root.workspaceMode === "read"; glyph: "text"; hint: "텍스트 선택"; active: root.tool === "read"; enabled: root.hasDocument; Layout.leftMargin: 6; onClicked: root.useTool("read") }
+                ActionButton { visible: root.workspaceMode === "read"; glyph: "hand"; hint: "손 도구 · 끌어서 이동"; active: root.tool === "hand"; enabled: root.hasDocument; onClicked: root.useTool("hand") }
                 Item { Layout.fillWidth: true }
                 ComboBox {
                     id: pageViewMode; objectName: "pageViewMode"; implicitWidth: 104; implicitHeight: 32; model: ["한 페이지", "두 페이지"]
@@ -437,7 +488,7 @@ ApplicationWindow {
                 }
                 ActionButton { glyph: "add"; hint: "확대 · Ctrl++"; enabled: root.hasDocument; onClicked: root.zoomBy(1.15) }
                 ToolSeparator {}
-                ActionButton { objectName: "commentsModeButton"; glyph: "note"; hint: "주석 목록"; active: root.commentsOpen; enabled: root.hasDocument && !annotationEditor.visible; onClicked: root.commentsOpen=!root.commentsOpen }
+                ActionButton { objectName: "focusReadingButton"; glyph: "focus"; hint: "집중 읽기 · F11"; enabled: root.hasDocument && root.dialogsClear && !pdf.busy; onClicked: root.startFocusReading() }
                 ActionButton { glyph: "search"; hint: "문서 검색 · Ctrl+F"; active: root.searchOpen; enabled: root.hasDocument; onClicked: { root.searchOpen=!root.searchOpen; root.sidebarOpen=true; if(root.searchOpen) searchInput.forceActiveFocus(); } }
                 ActionButton { objectName: "presentationButton"; glyph: "present"; hint: "슬라이드 쇼 · F5"; enabled: root.hasDocument && !pdf.busy && !pdf.ocrBusy; onClicked: root.startPresentation() }
                 ActionButton { objectName: "printButton"; glyph: "print"; hint: "인쇄 · Ctrl+P"; enabled: root.tabActionsEnabled && root.hasDocument && pdf.document.printable && !pdf.busy && !pdf.ocrBusy; onClicked: pdf.printDocument() }
@@ -509,7 +560,7 @@ ApplicationWindow {
         objectName: "readerWorkspace"; visible: !root.presenting
         anchors.fill: parent; spacing: 0
         Rectangle {
-            visible: root.sidebarOpen
+            visible: root.sidebarOpen && !root.focusReading
             Layout.preferredWidth: 224; Layout.fillHeight: true; color: Theme.surfaceAlt
             ColumnLayout {
                 anchors.fill: parent; spacing: 0
@@ -704,7 +755,7 @@ ApplicationWindow {
         }
 
         Rectangle {
-            id: workspace; Layout.fillWidth: true; Layout.fillHeight: true; color: Theme.canvas
+            id: workspace; Layout.fillWidth: true; Layout.fillHeight: true; color: root.focusReading ? root.focusBackdrop : Theme.canvas
             TapHandler { onPressedChanged: if(pressed) { if(textDialog.visible) root.commitEdit(null); pages.forceActiveFocus(); } }
             ListView {
                 id: pages; objectName: "pageList"; anchors.fill: parent; clip: true
@@ -743,6 +794,57 @@ ApplicationWindow {
                 controller: root.pdf
                 objectName: "pageScrollInput"; anchors.fill: parent; view: pages; visible: root.hasDocument
                 onZoomRequested: function(amount) { root.zoomBy(amount); }
+            }
+            // Focus reading controls: appear when the pointer nears the bottom edge.
+            Item {
+                id: focusControls; objectName: "focusControls"
+                anchors.fill: parent; visible: root.focusReading; z: 30
+                property bool revealed: focusHover.hovered && focusHover.point.position.y > height-120 || focusBar.hovered || focusIntro.running
+                HoverHandler { id: focusHover }
+                Timer { id: focusIntro; interval: 2600 }
+                Rectangle {
+                    id: focusBar; objectName: "focusBar"
+                    property bool hovered: barHover.hovered
+                    HoverHandler { id: barHover }
+                    anchors.horizontalCenter: parent.horizontalCenter; anchors.bottom: parent.bottom; anchors.bottomMargin: 22
+                    width: focusRow.implicitWidth+28; height: 48; radius: 24
+                    color: Theme.raised; border.color: Theme.line
+                    opacity: focusControls.revealed ? 1 : 0; visible: opacity>0
+                    Behavior on opacity { NumberAnimation { duration: 180 } }
+                    readonly property color ink: Theme.ink
+                    RowLayout {
+                        id: focusRow; anchors.centerIn: parent; spacing: 12
+                        Text { text: (pdf.currentPage+1)+" / "+pdf.document.count; color: focusBar.ink; font.pixelSize: 13; Layout.minimumWidth: 58; horizontalAlignment: Text.AlignHCenter }
+                        Rectangle { width: 1; height: 22; color: focusBar.ink; opacity: .25 }
+                        Text { text: "폭"; color: focusBar.ink; opacity: .7; font.pixelSize: 12 }
+                        Slider {
+                            id: focusWidthSlider; objectName: "focusWidthSlider"; implicitWidth: 150
+                            from: .3; to: 1; value: root.zoom; stepSize: .01
+                            onMoved: root.zoom=value
+                        }
+                        Rectangle { width: 1; height: 22; color: focusBar.ink; opacity: .25 }
+                        Text { text: "배경"; color: focusBar.ink; opacity: .7; font.pixelSize: 12 }
+                        Repeater {
+                            model: [{key:"dark",label:"어둡게"},{key:"gray",label:"회색"},{key:"paper",label:"종이"}]
+                            delegate: Rectangle {
+                                required property var modelData
+                                objectName: "focusTone_"+modelData.key
+                                width: 20; height: 20; radius: 10; color: root.focusTones[modelData.key]
+                                border.width: root.focusTone===modelData.key ? 2 : 1; border.color: root.focusTone===modelData.key ? Theme.accent : "#66888888"
+                                MouseArea { id: toneArea; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.focusTone=parent.modelData.key }
+                                ToolTip.visible: toneArea.containsMouse; ToolTip.delay: 400; ToolTip.text: modelData.label
+                            }
+                        }
+                        Rectangle { width: 1; height: 22; color: focusBar.ink; opacity: .25 }
+                        ActionButton { objectName: "endFocusButton"; compact: true; text: "나가기"; hint: "집중 읽기 끝내기 · Esc"; onClicked: root.endFocusReading() }
+                    }
+                }
+                Text {
+                    anchors.horizontalCenter: parent.horizontalCenter; anchors.top: parent.top; anchors.topMargin: 18
+                    text: "집중 읽기 · 아래쪽에 마우스를 올리면 조절 막대가 나와요 · Esc로 나가기"
+                    color: root.focusTone==="paper" ? "#5d625e" : "#b8bdb9"; font.pixelSize: 12
+                    opacity: focusIntro.running ? 1 : 0; Behavior on opacity { NumberAnimation { duration: 400 } }
+                }
             }
             Flickable {
                 id: startScreen; objectName: "startScreen"
@@ -814,7 +916,7 @@ ApplicationWindow {
         }
         ColumnLayout {
             id: commentsDock; objectName: "commentsDock"
-            visible: (root.commentsOpen || annotationEditor.visible) && root.hasDocument
+            visible: (root.commentsOpen || annotationEditor.visible) && root.hasDocument && !root.focusReading
             Layout.preferredWidth: 350; Layout.minimumWidth: 300; Layout.maximumWidth: 350; Layout.fillWidth: false; Layout.fillHeight: true; spacing: 0
             CommentsPanel {
                 id: commentsPanel
@@ -824,7 +926,7 @@ ApplicationWindow {
             }
         }
         Rectangle {
-            visible: root.workspaceMode === "edit" && root.hasDocument
+            visible: root.workspaceMode === "edit" && root.hasDocument && !root.focusReading
             Layout.preferredWidth: 218; Layout.fillHeight: true; color: Theme.surface
             Rectangle { width: 1; height: parent.height; color: Theme.line }
             ColumnLayout {
@@ -848,7 +950,7 @@ ApplicationWindow {
     }
 
     footer: Rectangle {
-        objectName: "readerFooter"; visible: !root.presenting
+        objectName: "readerFooter"; visible: !root.presenting && !root.focusReading
         height: 34; color: Theme.surface
         Rectangle { width: parent.width; height: 1; color: Theme.line }
         RowLayout {
@@ -1002,6 +1104,8 @@ ApplicationWindow {
                         HoverHandler { enabled: root.tool === "hand"; cursorShape: Qt.OpenHandCursor }
                         MouseArea {
                             id: region; anchors.fill: parent
+                            // Keep the page list from turning a vertical drag into a scroll.
+                            preventStealing: true
                             enabled: (root.canEdit && ["addText", "image"].indexOf(root.tool)>=0) || (root.canAnnotate && root.tool==="note")
                             cursorShape: root.tool === "read" ? Qt.IBeamCursor : Qt.CrossCursor
                             property point start: Qt.point(0,0)
@@ -1080,7 +1184,7 @@ ApplicationWindow {
     Connections {
         target: root.pdf
         function onOpenMergeDialog() { mergeDialog.open(); }
-        function onOpenComments() { root.commentsOpen=true; }
+        function onOpenComments() { root.openComments(); }
         function onShowAnnotationEditor(data) { annotationEditor.compose(data); }
         function onNavigateRequested(page,x,y) { root.jumpTo(page,x,y); }
         function onResumeRequested(page) { root.goPage(page); }
