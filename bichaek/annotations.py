@@ -18,6 +18,21 @@ EDITABLE = {"Text", "Highlight", "Underline", "StrikeOut", "Squiggly"}
 MARKUP = {"highlight": "add_highlight_annot", "underline": "add_underline_annot",
           "strikeout": "add_strikeout_annot", "squiggly": "add_squiggly_annot"}
 LOCKS = fitz.PDF_ANNOT_IS_READ_ONLY | fitz.PDF_ANNOT_IS_LOCKED | fitz.PDF_ANNOT_IS_LOCKED_CONTENTS
+mupdf = fitz.mupdf
+
+
+# Keys are written straight into the annotation dictionary. PyMuPDF's
+# xref_set_key prints the whole dictionary, edits the text and parses it back,
+# which a foreign annotation with unusual content does not always survive.
+def _obj(a): return mupdf.pdf_annot_obj(a.this)
+def put_text(a, key, text): mupdf.pdf_dict_puts(_obj(a), key, mupdf.pdf_new_text_string(text))
+def put_name(a, key, name): mupdf.pdf_dict_puts(_obj(a), key, mupdf.pdf_new_name(name))
+def drop_key(a, key): mupdf.pdf_dict_dels(_obj(a), key)
+def raw_rect(a):
+    r = mupdf.pdf_dict_get_rect(_obj(a), mupdf.pdf_new_name("Rect"))
+    return fitz.Rect(r.x0, r.y0, r.x1, r.y1)
+def put_rect(a, rect):
+    mupdf.pdf_dict_put_rect(_obj(a), mupdf.pdf_new_name("Rect"), mupdf.FzRect(*map(float, rect)))
 
 
 def pdf_date():
@@ -66,37 +81,17 @@ class AnnotationOperations:
         identifiers = {a.xref: ("nm:"+a.info["id"] if a.info.get("id") and names[a.info["id"]] == 1
                                else "xref:"+str(a.xref)) for a in annots}
         result = []
-        textpage = None
+        context = {"textpage": None}
         for a in annots:
-            info = a.info
-            subtype = a.type[1]
-            if subtype in ("Popup", "Link", "Widget"): continue
-            rect = a.rect * p.rotation_matrix
-            regions, quote = [], []
-            if subtype in ("Highlight", "Underline", "StrikeOut", "Squiggly"):
-                vertices = a.vertices or []
-                for pos in range(0, len(vertices)-3, 4):
-                    quad = fitz.Quad(vertices[pos:pos+4])
-                    regions.append(list((quad * p.rotation_matrix).rect))
-                    if self.owner_authenticated or self.pdf.permissions & fitz.PDF_PERM_COPY:
-                        if textpage is None: textpage = p.get_textpage()
-                        quote.append(p.get_textbox(quad.rect, textpage=textpage).strip())
-            rt = self.pdf.xref_get_key(a.xref, "RT")[1]
-            state = self.pdf.xref_get_key(a.xref, "State")[1]
-            state_model = self.pdf.xref_get_key(a.xref, "StateModel")[1]
-            parent = identifiers.get(a.irt_xref, "")
-            grouped = rt == "/Group"
-            editable = self._annotation_editable(a)
-            result.append({"id": identifiers[a.xref], "name": info.get("id", ""), "page": page,
-                "type": subtype, "label": LABELS.get(subtype, subtype), "rect": list(rect),
-                "regions": regions or [list(rect)], "content": info.get("content", ""),
-                "author": info.get("title", ""), "subject": info.get("subject", ""),
-                "created": info.get("creationDate", ""), "modified": info.get("modDate", ""),
-                "color": color_hex(a.colors.get("stroke") or []), "opacity": a.opacity if a.opacity >= 0 else 1,
-                "parentId": parent, "reply": bool(parent and not grouped), "grouped": grouped,
-                "state": state if state_model != "null" else "", "editable": editable,
-                "quote": "\n".join(quote)[:500], "flags": a.flags,
-                "session": self.session, "revision": self.revision})
+            try:
+                if a.type[1] in ("Popup", "Link", "Widget"): continue
+                result.append(self._describe_annotation(p, page, a, identifiers, context))
+            except Exception:
+                # One damaged foreign comment must not hide the others or the
+                # page's text layer: list it read-only with what can be read.
+                from .diagnostics import failure
+                failure("annotation %s on page %d" % (a.xref, page + 1))
+                result.append(self._damaged_annotation(p, page, a, identifiers))
         # A grouped primary is also read-only: editing it independently would
         # incorrectly change shared group attributes.
         group_parents = {x["parentId"] for x in result if x["grouped"]}
@@ -104,11 +99,55 @@ class AnnotationOperations:
             if item["id"] in group_parents: item["editable"] = False
         return {"page": page, "items": result, "session": self.session, "revision": self.revision}
 
+    def _describe_annotation(self, p, page, a, identifiers, context):
+        info = a.info
+        subtype = a.type[1]
+        rect = a.rect * p.rotation_matrix
+        regions, quote = [], []
+        if subtype in ("Highlight", "Underline", "StrikeOut", "Squiggly"):
+            vertices = a.vertices or []
+            for pos in range(0, len(vertices)-3, 4):
+                quad = fitz.Quad(vertices[pos:pos+4])
+                regions.append(list((quad * p.rotation_matrix).rect))
+                if self.owner_authenticated or self.pdf.permissions & fitz.PDF_PERM_COPY:
+                    if context["textpage"] is None: context["textpage"] = p.get_textpage()
+                    quote.append(p.get_textbox(quad.rect, textpage=context["textpage"]).strip())
+        rt = self.pdf.xref_get_key(a.xref, "RT")[1]
+        state = self.pdf.xref_get_key(a.xref, "State")[1]
+        state_model = self.pdf.xref_get_key(a.xref, "StateModel")[1]
+        parent = identifiers.get(a.irt_xref, "")
+        grouped = rt == "/Group"
+        return {"id": identifiers[a.xref], "name": info.get("id", ""), "page": page,
+            "type": subtype, "label": LABELS.get(subtype, subtype), "rect": list(rect),
+            "regions": regions or [list(rect)], "content": info.get("content", ""),
+            "author": info.get("title", ""), "subject": info.get("subject", ""),
+            "created": info.get("creationDate", ""), "modified": info.get("modDate", ""),
+            "color": color_hex(a.colors.get("stroke") or []), "opacity": a.opacity if a.opacity >= 0 else 1,
+            "parentId": parent, "reply": bool(parent and not grouped), "grouped": grouped,
+            "state": state if state_model != "null" else "", "editable": self._annotation_editable(a),
+            "quote": "\n".join(quote)[:500], "flags": a.flags,
+            "session": self.session, "revision": self.revision}
+
+    def _damaged_annotation(self, p, page, a, identifiers):
+        def read(fn, default):
+            try: return fn()
+            except Exception: return default
+        rect = read(lambda: list(a.rect * p.rotation_matrix), [0, 0, 0, 0])
+        info = read(lambda: a.info, {})
+        subtype = read(lambda: a.type[1], "Annot")
+        return {"id": identifiers.get(a.xref, "xref:"+str(a.xref)), "name": info.get("id", ""), "page": page,
+            "type": subtype, "label": LABELS.get(subtype, subtype), "rect": rect, "regions": [rect],
+            "content": info.get("content", ""), "author": info.get("title", ""), "subject": info.get("subject", ""),
+            "created": info.get("creationDate", ""), "modified": info.get("modDate", ""),
+            "color": "#ffd54f", "opacity": 1, "parentId": "", "reply": False, "grouped": False,
+            "state": "", "editable": False, "quote": "", "flags": read(lambda: a.flags, 0),
+            "session": self.session, "revision": self.revision}
+
     def _new_annotation_info(self, a, author, content, color, subject):
         now = pdf_date()
         a.set_info(title=author.strip() or "사용자", content=content, subject=subject,
                    creationDate=now, modDate=now)
-        self.pdf.xref_set_key(a.xref, "NM", fitz.get_pdf_str("bichaek-"+uuid.uuid4().hex))
+        put_text(a, "NM", "bichaek-"+uuid.uuid4().hex)
         a.set_colors(stroke=color_rgb(color))
         a.set_flags(a.flags | fitz.PDF_ANNOT_IS_PRINT)
         a.update()
@@ -120,8 +159,9 @@ class AnnotationOperations:
 
     def add_markup(self, page, kind, start, end, author="사용자", content="", color="#ffd54f"):
         if kind not in MARKUP: raise ValueError("지원하지 않는 텍스트 주석이에요.")
-        if not self.owner_authenticated and not self.pdf.permissions & fitz.PDF_PERM_COPY:
-            raise ValueError("이 PDF는 텍스트 선택 권한이 제한되어 있어요.")
+        # Marking text needs its position, not its characters: a PDF that
+        # allows comments but not copying can still be highlighted.
+        if not self.annotatable(): raise ValueError("이 PDF는 주석 권한이 제한되어 있어요.")
         color_rgb(color)
         p = self.pdf[page]
         data = p.get_text("rawdict", flags=fitz.TEXTFLAGS_RAWDICT & ~fitz.TEXT_PRESERVE_IMAGES, sort=True)
@@ -165,9 +205,9 @@ class AnnotationOperations:
             if content != old.get("content", ""):
                 # Plain-text edits replace an old rich-text popup body, which
                 # Acrobat would otherwise prefer over the updated /Contents.
-                self.pdf.xref_set_key(a.xref, "RC", "null")
+                drop_key(a, "RC")
             if not old.get("id"):
-                self.pdf.xref_set_key(a.xref, "NM", fitz.get_pdf_str("bichaek-"+uuid.uuid4().hex))
+                put_text(a, "NM", "bichaek-"+uuid.uuid4().hex)
             if color is not None and color.lower() != item["color"].lower():
                 a.set_colors(stroke=color_rgb(color))
                 a.update()
@@ -185,7 +225,7 @@ class AnnotationOperations:
             a = p.add_text_annot(parent.rect.tl, content, icon="Comment")
             self._new_annotation_info(a, author, content, item["color"], "답글")
             a.set_irt_xref(parent.xref)
-            self.pdf.xref_set_key(a.xref, "RT", "/R")
+            put_name(a, "RT", "R")
             # Replies belong in the comment thread, without another page icon.
             a.set_flags(fitz.PDF_ANNOT_IS_NO_VIEW | fitz.PDF_ANNOT_IS_NO_ZOOM | fitz.PDF_ANNOT_IS_NO_ROTATE)
         return self._annotation_result(page, a)
@@ -204,9 +244,7 @@ class AnnotationOperations:
             # appearance on rotated pages; translate the stored PDF rect instead.
             matrix = p.derotation_matrix * ~p.transformation_matrix
             delta = fitz.Point(x,y)*matrix - old.tl*matrix
-            raw = fitz.Rect(list(map(float, self.pdf.xref_get_key(a.xref, 'Rect')[1].strip('[]').split())))
-            raw += fitz.Rect(delta.x,delta.y,delta.x,delta.y)
-            self.pdf.xref_set_key(a.xref, 'Rect', '['+' '.join(format(v,'.9g') for v in raw)+']')
+            put_rect(a, raw_rect(a) + fitz.Rect(delta.x,delta.y,delta.x,delta.y))
             a.set_info(modDate=pdf_date())
             a.update()
         return self._annotation_result(page,a)

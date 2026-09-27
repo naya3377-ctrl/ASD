@@ -12,8 +12,16 @@ ColumnLayout {
     Component.onCompleted: { body.text = draft.text; author.text = draft.author; body.forceActiveFocus(); }
 
     Text {
-        text: form.draft.mode === "reply" ? "답글 작성" : form.draft.mode === "edit" ? "메모 수정" : "새 메모 · " + (Number(form.draft.targetData.page || 0) + 1) + "쪽"
+        text: form.draft.mode === "reply" ? "답글 작성" : form.draft.mode === "edit" ? "메모 수정"
+            : (form.draft.targetData.kind ? "선택한 글자에 메모 · " : "새 메모 · ") + (Number(form.draft.targetData.page || 0) + 1) + "쪽"
         font.pixelSize: 13; font.weight: Font.Black; color: Theme.ink
+    }
+    // The words this note will mark.
+    Text {
+        visible: !!form.draft.targetData.quote; Layout.fillWidth: true
+        text: "“" + String(form.draft.targetData.quote || "").replace(/\s+/g, " ") + "”"
+        wrapMode: Text.Wrap; maximumLineCount: 3; elide: Text.ElideRight
+        font.pixelSize: 11; color: Theme.inkMuted; textFormat: Text.PlainText
     }
     TextField {
         id: author; objectName: "commentAuthor"; Layout.fillWidth: true

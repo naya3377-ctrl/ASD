@@ -23,6 +23,12 @@ Rectangle {
     readonly property bool canMark: allowActions && controller.canAnnotate && !controller.ocrBusy
     readonly property var colors: ["#ffd54f","#8ed7ad","#7dbbe6","#ef9bc0","#bcadff"]
 
+    // With words selected the note goes on them; otherwise pick a place.
+    function addNote() {
+        if (!settleDraft()) return;
+        if (controller.textSelection.count > 0) controller.composeSelectionComment();
+        else toolRequested("note");
+    }
     function applyMarkup(kind) {
         if (controller.textSelection.count > 0) controller.annotateSelection(kind);
         toolRequested(kind);
@@ -85,7 +91,7 @@ Rectangle {
                 ActionButton { objectName: "commentHighlightButton"; glyph: "highlight"; compact: true; hint: "형광펜 · 글자를 선택하거나 드래그"; active: panel.activeTool==="highlight"; enabled: panel.canMark; onClicked: panel.applyMarkup("highlight") }
                 ActionButton { objectName: "commentUnderlineButton"; glyph: "underline"; compact: true; hint: "밑줄"; active: panel.activeTool==="underline"; enabled: panel.canMark; onClicked: panel.applyMarkup("underline") }
                 ActionButton { objectName: "commentStrikeoutButton"; glyph: "strikeout"; compact: true; hint: "취소선"; active: panel.activeTool==="strikeout"; enabled: panel.canMark; onClicked: panel.applyMarkup("strikeout") }
-                ActionButton { objectName: "commentNoteButton"; glyph: "note"; compact: true; hint: "메모 · 페이지에서 위치 클릭"; active: panel.activeTool==="note"; enabled: panel.canMark; onClicked: panel.toolRequested("note") }
+                ActionButton { objectName: "commentNoteButton"; glyph: "note"; compact: true; hint: "메모 · 선택한 글자에, 또는 페이지에서 위치 클릭"; active: panel.activeTool==="note"; enabled: panel.canMark; onClicked: panel.addNote() }
                 Item { Layout.fillWidth: true }
                 Repeater {
                     model: panel.colors

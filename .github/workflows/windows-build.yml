@@ -31,10 +31,10 @@ jobs:
       - name: Upload Windows installer
         uses: actions/upload-artifact@v4
         with:
-          name: YoonDF-Windows-0.9.14
+          name: YoonDF-Windows-0.9.15
           path: dist/installer/*.exe
       - name: Upload portable folder
         uses: actions/upload-artifact@v4
         with:
-          name: YoonDF-Windows-portable-0.9.14
+          name: YoonDF-Windows-portable-0.9.15
           path: dist/YoonDF/

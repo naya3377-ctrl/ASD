@@ -12,6 +12,14 @@ import time
 import traceback
 
 
+def describe(exc):
+    """MuPDF's own messages ("code=8: invalid key in dict") mean nothing to a
+    reader. Say what happened in plain words and keep the detail for reports."""
+    if type(exc).__name__.startswith("FzError"):
+        return "PDF 내부 구조의 일부를 읽지 못해서 작업을 마치지 못했어요. (MuPDF: %s)" % exc
+    return str(exc)
+
+
 def engine_main(inbox, outbox, stopping=None):
     from .diagnostics import install, failure
     install()
@@ -68,7 +76,7 @@ def engine_main(inbox, outbox, stopping=None):
                 outbox.put({"id": msg["id"], "op": msg["op"], "result": result})
             except Exception as exc:
                 failure('PDF operation: '+msg['op'])
-                outbox.put({"id": msg["id"], "op": msg["op"], "error": str(exc),
+                outbox.put({"id": msg["id"], "op": msg["op"], "error": describe(exc),
                             "trace": traceback.format_exc()})
     finally:
         for engine in engines.values(): engine.close()

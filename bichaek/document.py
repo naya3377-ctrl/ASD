@@ -119,9 +119,44 @@ class Document(AnnotationOperations, ImageObjectOperations):
     def _token():
         return uuid.uuid4().hex[:12]
 
+    def _write(self, path, **options):
+        """Save a copy. Some exported PDFs carry a damaged object that no page
+        uses (or one MuPDF skips while drawing). Readers ignore it, but a
+        full write stops on it: every edit and comment then failed with
+        "code=8: invalid key in dict". Neutralise what cannot be read, exactly
+        as a reader already treats it, and write again."""
+        try:
+            self.pdf.save(path, **options)
+        except Exception:
+            if not self._neutralize_unreadable_objects():
+                raise
+            self.pdf.save(path, **options)
+
+    def _neutralize_unreadable_objects(self):
+        """Replace objects MuPDF cannot parse with null and unreadable stream
+        data with an empty stream. Returns how many objects changed."""
+        changed = 0
+        for xref in range(1, self.pdf.xref_length()):
+            try:
+                self.pdf.xref_object(xref, compressed=True)
+            except Exception:
+                self.pdf.update_object(xref, "null")
+                changed += 1
+                continue
+            try:
+                if self.pdf.xref_is_stream(xref):
+                    self.pdf.xref_stream_raw(xref)
+            except Exception:
+                self.pdf.update_stream(xref, b"")
+                changed += 1
+        if changed:
+            from .diagnostics import note
+            note("neutralized %d unreadable PDF objects in %s", changed, Path(self.path).name)
+        return changed
+
     def _snapshot(self):
         name = str(Path(self.temp.name) / (uuid.uuid4().hex + ".pdf"))
-        self.pdf.save(name, garbage=0, encryption=fitz.PDF_ENCRYPT_KEEP)
+        self._write(name, garbage=0, encryption=fitz.PDF_ENCRYPT_KEEP)
         # Page tokens travel with history so undo/redo can reuse rendered pages.
         return name, self.state_id, list(self.page_tokens)
 
@@ -161,7 +196,7 @@ class Document(AnnotationOperations, ImageObjectOperations):
         either, every page is treated as changed."""
         self.require()
         if not (self.annotatable() if annotation else self.editable()):
-            raise DocumentError("이 PDF는 편집 권한이 제한되어 있어요.")
+            raise DocumentError("이 PDF는 주석 권한이 제한되어 있어요." if annotation else "이 PDF는 편집 권한이 제한되어 있어요.")
         before = self._snapshot()
         self._pending_tokens = None
         try:
@@ -686,13 +721,25 @@ class Document(AnnotationOperations, ImageObjectOperations):
         self.require()
         p = self.pdf[page]
         allowed = bool(self.owner_authenticated or self.pdf.permissions & fitz.PDF_PERM_COPY)
+        # A document may allow comments but not copying. Its characters are
+        # then sent as placeholders: enough to select and mark, nothing to copy.
+        markable = allowed or self.annotatable()
         result = {"page": page, "pageId": p.xref, "session": self.session,
-                  "revision": self.revision, "copyable": allowed, "chars": [], "lines": [],
-                  "links": self.page_links(page), "annotations": self.annotations_page(page)["items"], "images": [],
-                  "movableImages": self.movable_images(page) if self.editable() else []}
-        if not allowed:
+                  "revision": self.revision, "copyable": allowed, "markable": markable, "chars": [], "lines": [],
+                  "links": [], "annotations": [], "images": [], "movableImages": []}
+        # Links, comments and images are extras. A damaged one must never cost
+        # the page its text layer, or selecting text stops working.
+        def extra(key, read):
+            try: result[key] = read()
+            except Exception:
+                from .diagnostics import failure
+                failure("text layout %s on page %d" % (key, page + 1))
+        extra("links", lambda: self.page_links(page))
+        extra("annotations", lambda: self.annotations_page(page)["items"])
+        if self.editable(): extra("movableImages", lambda: self.movable_images(page))
+        if not markable:
             return result
-        result["images"] = self.image_metadata(page)
+        if allowed: extra("images", lambda: self.image_metadata(page))
         data = p.get_text("rawdict", flags=fitz.TEXTFLAGS_RAWDICT & ~fitz.TEXT_PRESERVE_IMAGES,
                           sort=True)
         matrix = p.rotation_matrix
@@ -703,7 +750,8 @@ class Document(AnnotationOperations, ImageObjectOperations):
                 for span in line["spans"]:
                     for char in span["chars"]:
                         rect = fitz.Rect(char["bbox"]) * matrix
-                        result["chars"].append([char["c"], *list(rect), line_id])
+                        c = char["c"] if allowed or char["c"].isspace() else "\u2022"
+                        result["chars"].append([c, *list(rect), line_id])
                 if len(result["chars"]) > start:
                     dx, dy = line.get("dir", (1, 0))
                     result["lines"].append({"start": start, "end": len(result["chars"]),
@@ -724,7 +772,7 @@ class Document(AnnotationOperations, ImageObjectOperations):
         same_path = target == Path(self.path)
         try:
             # Full rewrite removes orphaned old text streams; never rasterize pages.
-            self.pdf.save(tmp, garbage=3, deflate=True, encryption=fitz.PDF_ENCRYPT_KEEP)
+            self._write(tmp, garbage=3, deflate=True, encryption=fitz.PDF_ENCRYPT_KEEP)
             check = fitz.open(tmp)
             if check.needs_pass:
                 check.authenticate(self.password)

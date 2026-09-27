@@ -133,6 +133,7 @@ class Bridge(QObject):
         self._qt_font_ids = {}
         self._live_editor = TextEditor(self)
         self._selected_text = ""
+        self._selection_copyable = True
         self._text_page = -1
         self._text_start = self._text_end = 0
         self._text_layouts = OrderedDict()
@@ -271,7 +272,7 @@ class Bridge(QObject):
     @Slot(int, int, int)
     def selectCharacters(self, page, start, end):
         data = self._text_layouts.get(page, {})
-        if not data.get("copyable"): return
+        if not (data.get("copyable") or data.get("markable")): return
         chars = data["chars"]
         start, end = sorted((max(0, min(len(chars), start)), max(0, min(len(chars), end))))
         text, last_line = [], None
@@ -281,8 +282,11 @@ class Bridge(QObject):
             last_line = char[5]
         self._text_page, self._text_start, self._text_end = page, start, end
         self._selected_text = "".join(text)
+        self._selection_copyable = bool(data.get("copyable"))
         self.textSelectionChanged.emit()
-        self.set_status(f"{len(self._selected_text)}자 선택 · Ctrl+C 또는 우클릭으로 복사" if text else "글자를 드래그해서 선택하세요.")
+        if not text: self.set_status("글자를 드래그해서 선택하세요.")
+        elif data.get("copyable"): self.set_status(f"{len(self._selected_text)}자 선택 · Ctrl+C 또는 우클릭으로 복사")
+        else: self.set_status(f"{len(self._selected_text)}자 선택 · 복사는 제한된 문서예요. 형광펜·밑줄·메모는 남길 수 있어요.")
 
     @Slot()
     def clearTextSelection(self):
@@ -1272,6 +1276,7 @@ class Bridge(QObject):
         if tool == "read":
             def got(result):
                 self._selected_text = result.get("text", "")
+                self._selection_copyable = True
                 self.set_status(f"텍스트 {len(self._selected_text)}자 선택됨 · Ctrl+C로 복사" if self._selected_text else "선택 가능한 글자가 없어요. 스캔 문서는 OCR을 실행해 주세요.")
             self.command("selected_text", {"page": page, "rect": rect}, got, guarded=True)
         elif tool == "addText":
@@ -1420,6 +1425,24 @@ class Bridge(QObject):
             'author':self.annotationAuthor, 'color':self.annotationColor, 'content':'',
             'session':self._state['session'], 'revision':self._state['revision']})
 
+    @Slot()
+    def composeSelectionComment(self):
+        """A note on the selected words: the words are highlighted and carry
+        the note, like "add note to text" in other PDF readers. Without a
+        selection the note tool asks for a place on the page instead."""
+        if not self.canAnnotate or self._text_editor_open or self._annotation_editor_open: return
+        chars = self._text_layouts.get(self._text_page, {}).get('chars', [])
+        chosen = chars[self._text_start:self._text_end]
+        if self._text_page < 0 or not chosen:
+            self.set_status('먼저 메모를 남길 글자를 드래그해 선택하세요.')
+            return
+        self.openComments.emit()
+        self.showAnnotationEditor.emit({'mode':'new', 'kind':'highlight', 'page':self._text_page,
+            'start':self._text_start, 'end':self._text_end, 'point':[chosen[-1][3], chosen[-1][2]],
+            'quote':self._selected_text[:300] if self._selection_copyable else '',
+            'author':self.annotationAuthor, 'color':self.annotationColor, 'content':'',
+            'session':self._state['session'], 'revision':self._state['revision']})
+
     @Slot(bool)
     def setAnnotationEditorVisible(self, visible):
         self._annotation_editor_open = visible
@@ -1442,7 +1465,11 @@ class Bridge(QObject):
             return
         if not self.canAnnotate: return
         if data['mode'] != 'edit': self.setAnnotationAuthor(author)
-        if data['mode']=='new':
+        if data['mode']=='new' and data.get('kind'):
+            op = 'add_markup'
+            args = {'page':data['page'], 'kind':data['kind'], 'start':data['start'], 'end':data['end'],
+                    'content':content, 'author':author, 'color':color}
+        elif data['mode']=='new':
             op = 'add_comment'
             args = {'page':data['page'], 'point':data['point'], 'content':content,
                     'author':author, 'color':color}
@@ -1472,7 +1499,9 @@ class Bridge(QObject):
     @Slot()
     def copySelection(self):
         from PySide6.QtGui import QGuiApplication
-        if self._selected_text:
+        if self._selected_text and not self._selection_copyable:
+            self.set_status("문서 작성자가 텍스트 복사를 제한했어요.")
+        elif self._selected_text:
             QGuiApplication.clipboard().setText(self._selected_text)
             self.set_status("선택한 텍스트를 복사했어요.")
 
