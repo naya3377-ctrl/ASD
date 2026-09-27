@@ -23,6 +23,11 @@ requires a separate Tesseract installation; this cross-build bundles OCR.
 7. From packaging/, run NSIS with absolute paths:
    `makensis -DPAYLOAD=PAYLOAD -DOUTPUT=OUTPUT.exe windows-cross.nsi`
 
+GitHub Actions runs these same steps in the `offline-installer` job of
+`.github/workflows/windows-build.yml` (after the Windows tests pass), checks
+every input against `windows-input-sha256.json`, and uploads the installer as
+the `YoonDF-Setup-VERSION-x64` artifact.
+
 The build uses no signing certificate. Verify installation, launching, editing,
 OCR, GPU rendering and uninstall on Windows before a public stable release.
 
