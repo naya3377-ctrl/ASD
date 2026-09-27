@@ -386,6 +386,37 @@ class Document(AnnotationOperations, ImageObjectOperations):
                         clip=fitz.Rect(0,0,target.width,target.height))
         return self.info()
 
+    def replace_text_runs(self,page,block_id,runs,fonts,rect,session,revision):
+        """Replace a paragraph with positioned characters written as PDF text.
+
+        runs: [{font, size, color, chars: [[x, y, char], ...]}] with baseline
+        positions in points relative to rect's top-left; fonts: {font: bytes}."""
+        if session!=self.session or revision!=self.revision:raise DocumentError('문서가 변경되었어요. 본문을 다시 선택해 주세요.')
+        blocks=self.objects(page)['blocks']
+        if not 0<=block_id<len(blocks):raise DocumentError('수정할 본문을 찾을 수 없어요.')
+        block=blocks[block_id];p=self.pdf[page]
+        if block['hidden'] or not block['horizontal']:raise DocumentError('이 본문은 직접 수정할 수 없어요.')
+        if p.rotation:raise DocumentError('회전된 페이지는 이 방식으로 적용할 수 없어요.')
+        if any(a.type[0]==fitz.PDF_ANNOT_REDACT for a in p.annots() or []):raise DocumentError('적용 전 가림 표시를 먼저 정리해 주세요.')
+        target=fitz.Rect(rect)
+        if target.is_empty or not (p.rect+(-.1,-.1,.1,.1)).contains(target):raise DocumentError('글이 페이지 밖으로 나가요. 편집 영역의 폭이나 글자 크기를 조정해 주세요.')
+        from .fonts import pdf_font
+        loaded={key:fitz.Font(fontbuffer=pdf_font(data)) for key,data in fonts.items()}
+        with self.transaction(pages=[page]):
+            p=self.pdf[page];p.add_redact_annot(fitz.Rect(block['rect']),fill=False,cross_out=False)
+            p.apply_redactions(images=0,graphics=0,text=0)
+            placed=[(run,x,y,char) for run in runs for x,y,char in run['chars']]
+            writers={}
+            for run,x,y,char in placed:
+                font=loaded[run['font']];size=float(run['size'])
+                if not font.has_glyph(ord(char)):continue   # never stamp a .notdef box
+                colour=tuple(float(c) for c in run['color'])
+                writer=writers.get(colour)
+                if writer is None:writer=writers[colour]=fitz.TextWriter(p.rect)
+                writer.append(fitz.Point(target.x0+x,target.y0+y),char,font=font,fontsize=size)
+            for colour,writer in writers.items():writer.write_text(p,color=colour)
+        return self.info()
+
     def font_preview(self, page, name, text, source, path):
         if source=='original':
             return {'font':original_font(self.pdf,page,name,text)}

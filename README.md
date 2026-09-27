@@ -1,7 +1,7 @@
 # 윤DF · YoonDF
 
 Acrobat의 도구 구성과 Sumatra·미리보기의 간결한 읽기 화면을 참고한 오프라인 PDF 편집기입니다.
-**0.9.8 preview: Windows 10/11 x64 설치 파일 및 공개 소스. Windows 실기기 실행 검증은 아직 하지 않았습니다.**
+**0.9.9 preview: Windows 10/11 x64 설치 파일 및 공개 소스. Windows 실기기 실행 검증은 아직 하지 않았습니다.**
 
 이 버전은 Python 3.12 + PySide6 / Qt Quick + PyMuPDF로 구현했습니다.
 MuPDF 연산은 별도 프로세스에서 수행하고, Qt Quick이 화면을 표시합니다.
@@ -11,7 +11,7 @@ C++ 전용 프로그램이나 Sumatra와 같은 시작 속도를 검증한 제�
 
 ### Windows 10/11, 64비트
 
-`YoonDF-Setup-0.9.8-x64.exe`를 더블클릭하고 설치를 완료합니다.
+`YoonDF-Setup-0.9.9-x64.exe`를 더블클릭하고 설치를 완료합니다.
 시작 메뉴나 바탕 화면의 **윤DF**로 실행합니다.
 Python, Qt, PDF 엔진, 한국어·영어 OCR 데이터를 포함하며 설치·실행에 인터넷이 필요하지 않습니다.
 관리자 권한 없이 현재 사용자 계정에 설치됩니다.
@@ -43,7 +43,7 @@ Windows 설정에서 `.pdf`의 앱으로 **윤DF**를 선택하세요. Windows 1
 앱을 제거하면 함께 정리됩니다. 제거 전에는 열린 문서를 저장하고 모든 윤DF 창을 닫아 주세요.
 설정과 사용자가 저장한 PDF의 위치는 변경하지 않습니다.
 
-설치된 `versions/0.9.8-*/source/samples/sample.pdf`로 본문 수정과 페이지 편집을 시험할 수 있습니다.
+설치된 `versions/0.9.9-*/source/samples/sample.pdf`로 본문 수정과 페이지 편집을 시험할 수 있습니다.
 마지막 페이지는 OCR용 스캔입니다. 아래 명령은 소스를 개발할 때만 필요합니다.
 
 ### 소스 실행
@@ -57,6 +57,11 @@ python main.py
 python main.py path/to/document.pdf path/to/another.pdf
 ```
 
+
+## 0.9.9 변경 사항
+
+- **고친 문단을 다시 고칠 수 있게**: 편집 결과를 PDF에 넣을 때 Qt의 PDF 출력 대신 PDF 엔진(MuPDF)이 글자를 직접 씁니다. 편집 화면에서 계산한 글자별 위치를 그대로 쓰므로 줄 맞춤·자간·들여쓰기는 같습니다. Windows에서 고친 문단이 글자가 아닌 선(그림)으로 저장되어 다시 선택·검색·편집할 수 없던 문제를 막습니다. PDF 안의 글꼴 이름도 원래 이름(예: Pretendard-Regular)으로 남습니다.
+- 회전된 페이지는 기존 방식으로 적용합니다.
 
 ## 0.9.8 변경 사항
 

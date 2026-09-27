@@ -25,7 +25,7 @@ class TextEditor(QObject):
         self._guard=False;self._font_error=False;self._fallback=False;self._auto_tried='';self._wrappers=[];self.device=QImage(1,1,QImage.Format_ARGB32)
         self.device.setDotsPerMeterX(3780);self.device.setDotsPerMeterY(3780)
         self._missing_stamp=None;self._missing='';self._has_fallback=False;self._support={};self._measuring=False
-        self._registered={};self._composing=False;self._pending_font=None;self._fallback_failed=False
+        self._registered={};self.font_data={};self._composing=False;self._pending_font=None;self._fallback_failed=False
         self.resume=QTimer(self);self.resume.setSingleShot(True);self.resume.timeout.connect(self._resume_fonts)
         self.timer=QTimer(self);self.timer.setSingleShot(True);self.timer.setInterval(160);self.timer.timeout.connect(lambda:self.useFallback(True))
         self.watchdog=QTimer(self);self.watchdog.setSingleShot(True);self.watchdog.setInterval(25000);self.watchdog.timeout.connect(self._timed_out)
@@ -91,6 +91,7 @@ class TextEditor(QObject):
         self._width=max(20,target['rect'][2]-target['rect'][0]+.5);self._height=max(10,target['rect'][3]-target['rect'][1])
         self._size=target.get('size',14);self.fonts={};self._opened=time.monotonic()
         fallback=self.raw.get('__fallback__');self.raw={'__fallback__':fallback} if fallback else {}
+        data=getattr(self,'font_data',{}).get('__fallback__');self.font_data={'__fallback__':data} if data else {}
         self.widthChanged.emit()
         old=self.doc;self.doc=None
         if old:old.deleteLater()
@@ -139,7 +140,7 @@ class TextEditor(QObject):
                 self.watchdog.stop();self._loading=False;errors=[]
                 for entry in result['fonts']:
                     if entry['error']:errors.append(entry['error']);continue
-                    family,raw=self._register(entry['data']);self.fonts[entry['name']]=family;self.raw[entry['name']]=raw
+                    family,raw=self._register(entry['data']);self.fonts[entry['name']]=family;self.raw[entry['name']]=raw;self.font_data[entry['name']]=entry['data']
                 self._invalidate_glyphs()
                 if result.get('background'):self._background='data:image/png;base64,'+base64.b64encode(result['background']).decode('ascii')
                 if errors:
@@ -239,7 +240,7 @@ class TextEditor(QObject):
                 if result.get('stale'):raise ValueError('문서가 바뀌었어요. 본문을 다시 선택해 주세요.')
                 entry=result['fonts'][0]
                 if entry['error']:raise ValueError(entry['error'])
-                family,raw=self._register(entry['data']);self.raw['__fallback__']=raw
+                family,raw=self._register(entry['data']);self.raw['__fallback__']=raw;self.font_data['__fallback__']=entry['data']
                 self._fallback_entry=entry;self._invalidate_glyphs()
                 self._guard=True;cursor=QTextCursor(self.doc);cursor.beginEditBlock()
                 try:
@@ -331,13 +332,39 @@ class TextEditor(QObject):
                 fmt.setLineHeight(fmt.lineHeight()*ratio,fmt.lineHeightType());QTextCursor(block).setBlockFormat(fmt)
             block=block.next()
         cursor.endEditBlock();self._guard=False;self._edited=True;self._offset=0;self._status='';self._measure()
+    def text_runs(self):
+        """The laid-out text as positioned characters, in PDF points relative to
+        the edit box. The PDF engine writes these as real text with the same
+        font programs. Qt's own PDF output is not used for this: on Windows it
+        can draw converted fonts as outlines, which then cannot be selected,
+        searched or edited again."""
+        runs=[];current=None
+        for pos,length,text,fmt in self._fragments():
+            block=self.doc.findBlock(pos);layout=block.layout();base=layout.position()
+            key='__fallback__' if fmt.property(FALLBACK) else fmt.property(ORIGIN) or self.target.get('font','')
+            size=float(fmt.property(SIZE) or self._size);colour=fmt.foreground().color()
+            style=(key,round(size,3),colour.rgb())
+            offset=pos-block.position()
+            for char in text:
+                units=len(char.encode('utf-16-le'))//2
+                # Spaces are written too, so copied/searched text keeps its word breaks.
+                if char not in '\n\r\t\u2028\u2029\ufffc':
+                    line=layout.lineForTextPosition(offset)
+                    if line.isValid():
+                        x=base.x()+line.cursorToX(offset)[0];y=base.y()+line.y()+line.ascent()+self._offset
+                        if current is None or current['style']!=style:
+                            current={'style':style,'font':key,'size':size,'color':[colour.redF(),colour.greenF(),colour.blueF()],'chars':[]};runs.append(current)
+                        current['chars'].append([x,y,char])
+                offset+=units
+        for run in runs:del run['style']
+        return runs
     def pdf_bytes(self):
         if not self.doc.toPlainText().strip():return b''
         data=QByteArray();buffer=QBuffer(data);buffer.open(QIODevice.WriteOnly)
         # QPdfWriter rounds its MediaBox to integer points. Round outward and
         # crop on insertion, otherwise stretching to the fractional target
         # silently changes character positions after applying the edit.
-        writer=QPdfWriter(buffer);writer.setResolution(72);writer.setPageSize(QPageSize(QSizeF(math.ceil(self._width),math.ceil(self._height)),QPageSize.Point));writer.setPageMargins(QMarginsF(0,0,0,0));writer.setCreator('YoonDF 0.9.8')
+        writer=QPdfWriter(buffer);writer.setResolution(72);writer.setPageSize(QPageSize(QSizeF(math.ceil(self._width),math.ceil(self._height)),QPageSize.Point));writer.setPageMargins(QMarginsF(0,0,0,0));writer.setCreator('YoonDF 0.9.9')
         painter=QPainter(writer)
         if not painter.isActive():raise ValueError('편집 내용을 PDF로 만들지 못했어요.')
         painter.translate(0,self._offset);self.doc.drawContents(painter,QRectF(0,0,self._width,self._height-self._offset));painter.end();buffer.close()
@@ -346,7 +373,14 @@ class TextEditor(QObject):
         if not self.canApply:return
         if not self._edited and self.bridge._font_choice=='original':self.bridge.textCommitted.emit();return
         target=self.target;rect=list(target['rect']);rect[2]=rect[0]+self._width;rect[3]=rect[1]+self._height
-        try:data=self.pdf_bytes()
+        direct=not target.get('rotation',0)
+        try:
+            if direct:
+                runs=self.text_runs();used={r['font'] for r in runs}
+                missing=[k for k in used if k not in self.font_data]
+                if missing:raise ValueError('글꼴 정보를 찾지 못했어요. 다시 시도해 주세요.')
+                fonts={k:self.font_data[k] for k in used}
+            else:data=self.pdf_bytes()
         except Exception as exc:self._status=str(exc);self.changed.emit();self.applyFailed.emit();return
         self.bridge._busy=True;self.bridge.stateChanged.emit()
         applied=time.monotonic()
@@ -354,8 +388,12 @@ class TextEditor(QObject):
             from .diagnostics import note;note('edit applied in %.2fs',time.monotonic()-applied)
             self.bridge.update_state(state);self.bridge.set_status('화면에서 편집한 내용을 적용했어요. Ctrl+S로 저장하세요.');self.bridge.textCommitted.emit()
         def failed(message):self.bridge._busy=False;self.bridge.stateChanged.emit();self._status=message;self.changed.emit();self.applyFailed.emit()
-        self.bridge.command('replace_pdf_text',{'page':target['page'],'block_id':target['id'],'fragment':data,'rect':rect,
-            'session':target['session'],'revision':target['revision']},done,error_callback=failed)
+        if direct:
+            self.bridge.command('replace_text_runs',{'page':target['page'],'block_id':target['id'],'runs':runs,'fonts':fonts,'rect':rect,
+                'session':target['session'],'revision':target['revision']},done,error_callback=failed)
+        else:
+            self.bridge.command('replace_pdf_text',{'page':target['page'],'block_id':target['id'],'fragment':data,'rect':rect,
+                'session':target['session'],'revision':target['revision']},done,error_callback=failed)
     def dispose(self):
         self.generation+=1;self.timer.stop();self.watchdog.stop();self.resume.stop();self._pending_font=None
         self._detach()

@@ -101,6 +101,37 @@ class Type1SubsetTests(unittest.TestCase):
         finally:
             editor.dispose();d.close()
 
+    def test_edited_paragraph_stays_real_text_and_can_be_edited_again(self):
+        """Regression: after one edit the paragraph became uneditable on Windows."""
+        from PySide6.QtWidgets import QApplication
+        from PySide6.QtGui import QTextCursor
+        from bichaek.document import Document
+        from bichaek.text_editor import TextEditor
+        from tests.test_inline_fonts import EditorBridge
+        app=QApplication.instance() or QApplication([])
+        d=Document();d.open(str(self.path))
+        try:
+            for round_text in ('나','가다'):
+                editor=TextEditor(EditorBridge(d))
+                try:
+                    target=d.objects(0)['blocks'][0]
+                    target.update(pageWidth=300,pageHeight=200,session=d.session,revision=d.revision)
+                    editor.start(target);editor.loadFonts();self.assertTrue(editor.ready,editor.status)
+                    cursor=QTextCursor(editor.doc);cursor.movePosition(QTextCursor.End);cursor.insertText(round_text)
+                    self.assertTrue(editor.canApply,editor.status);editor.apply()
+                finally:
+                    editor.dispose()
+                blocks=d.objects(0)['blocks']
+                self.assertEqual(len(blocks),1)
+                self.assertFalse(blocks[0]['hidden'])
+                self.assertTrue(blocks[0]['text'].replace('\n','').endswith(round_text),blocks[0]['text'])
+            self.assertEqual(d.pdf[0].get_text().replace('\n',''),'가나다나가다')
+            # Written as text in the original face, not outlines or a substitute.
+            self.assertTrue(all(t['type']==0 for t in d.pdf[0].get_texttrace()))
+            self.assertTrue(any('Test-Regular' in f[3] for f in d.pdf[0].get_fonts()))
+        finally:
+            d.close()
+
 
 if __name__=='__main__':
     unittest.main()

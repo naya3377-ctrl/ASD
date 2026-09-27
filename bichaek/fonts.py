@@ -341,3 +341,28 @@ def qt_font(data):
         if record.nameID in (1,16,21):font['name'].setName(family,record.nameID,record.platformID,record.platEncID,record.langID)
     for nid in (1,16):font['name'].setName(family,nid,3,1,0x409)
     out=BytesIO();font.save(out);font.close();return out.getvalue(),family
+
+
+_PDF_NAMES={}
+
+
+def pdf_font(data):
+    """Font bytes for writing into a PDF under the font's own name.
+
+    qt_font() renames families to YoonDF_<hash> so Qt never confuses two
+    subsets; the saved PDF should still say "Pretendard-Regular"."""
+    key=hashlib.sha256(data).hexdigest()
+    if key not in _PDF_NAMES:
+        try:
+            font=TTFont(BytesIO(data),recalcTimestamp=False);names=font['name']
+            family=names.getDebugName(1) or ''
+            original=names.getDebugName(6) or names.getDebugName(4)
+            if family.startswith('YoonDF_') and original:
+                for record in list(names.names):
+                    if record.nameID in (1,16,21):names.setName(original,record.nameID,record.platformID,record.platEncID,record.langID)
+                out=BytesIO();font.save(out);data=out.getvalue()
+            font.close()
+        except Exception:
+            pass   # an unreadable name table only costs the display name
+        _PDF_NAMES[key]=data
+    return _PDF_NAMES[key]
