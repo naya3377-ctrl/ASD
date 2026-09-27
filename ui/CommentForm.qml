@@ -4,6 +4,9 @@ import QtQuick.Controls
 import QtQuick.Layouts
 
 // Writing area for a comment draft, shown in place inside the comment list.
+// Editing or answering is about the words only: the marked passage and its
+// colour stay out of the way (they belong to the 형광펜 view). A new memo on
+// selected words shows a line of them and picks the new mark's colour.
 ColumnLayout {
     id: form
     required property var draft
@@ -12,18 +15,20 @@ ColumnLayout {
     Component.onCompleted: { body.text = draft.text; author.text = draft.author; body.forceActiveFocus(); }
 
     Text {
-        text: form.draft.mode === "reply" ? "답글 작성" : form.draft.mode === "edit" ? "메모 수정"
+        objectName: "commentFormTitle"
+        text: form.draft.mode === "reply" ? "답글 작성" : form.draft.mode === "edit" ? (String(form.draft.targetData.content || "").trim() ? "메모 수정" : "메모 달기")
             : (form.draft.targetData.kind ? "선택한 글자에 메모 · " : "새 메모 · ") + (Number(form.draft.targetData.page || 0) + 1) + "쪽"
         font.pixelSize: Theme.small; font.weight: Font.DemiBold; color: Theme.ink
     }
-    // The words this note will mark.
+    // The words a new memo will mark.
     RowLayout {
-        visible: !!form.draft.targetData.quote; Layout.fillWidth: true; spacing: 9
+        objectName: "commentFormQuote"
+        visible: form.draft.mode === "new" && !!form.draft.targetData.quote; Layout.fillWidth: true; spacing: Theme.gapS
         Rectangle { Layout.fillHeight: true; Layout.preferredWidth: 2; radius: 1; color: Theme.lineStrong }
         Text {
             Layout.fillWidth: true
             text: String(form.draft.targetData.quote || "").replace(/\s+/g, " ")
-            wrapMode: Text.Wrap; maximumLineCount: 3; elide: Text.ElideRight
+            wrapMode: Text.Wrap; maximumLineCount: 2; elide: Text.ElideRight
             font.pixelSize: Theme.small; color: Theme.inkSoft; textFormat: Text.PlainText
         }
     }
@@ -54,7 +59,8 @@ ColumnLayout {
     RowLayout {
         Layout.fillWidth: true; spacing: 0
         Repeater {
-            model: form.draft.mode === "reply" ? [] : form.colors
+            objectName: "commentFormColors"
+            model: form.draft.mode === "new" ? form.colors : []
             delegate: Item {
                 required property string modelData
                 width: 24; height: 32

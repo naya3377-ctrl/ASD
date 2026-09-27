@@ -31,12 +31,12 @@ jobs:
       - name: Upload Windows installer
         uses: actions/upload-artifact@v4
         with:
-          name: YoonDF-Windows-0.9.19
+          name: YoonDF-Windows-0.9.20
           path: dist/installer/*.exe
       - name: Upload portable folder
         uses: actions/upload-artifact@v4
         with:
-          name: YoonDF-Windows-portable-0.9.19
+          name: YoonDF-Windows-portable-0.9.20
           path: dist/YoonDF/
 
   # The offline installer people actually install (packaging/CROSS_BUILD.md):
@@ -90,10 +90,10 @@ jobs:
           python -m ziglang cc -target x86_64-windows-gnu -O2 -municode -Wl,--subsystem,windows python_host.c "$RUNNER_TEMP/launcher.res" -lshell32 -o "$PAYLOAD/runtime/YoonDF.exe"
           rm -f "$PAYLOAD"/*.pdb "$PAYLOAD"/runtime/*.pdb
           mkdir -p "$OUTPUT"
-          makensis -V2 -DPAYLOAD="$PAYLOAD" -DOUTPUT="$OUTPUT/YoonDF-Setup-0.9.19-x64.exe" windows-cross.nsi
+          makensis -V2 -DPAYLOAD="$PAYLOAD" -DOUTPUT="$OUTPUT/YoonDF-Setup-0.9.20-x64.exe" windows-cross.nsi
       - name: Upload offline installer
         uses: actions/upload-artifact@v4
         with:
-          name: YoonDF-Setup-0.9.19-x64
-          path: ${{ runner.temp }}/out/YoonDF-Setup-0.9.19-x64.exe
+          name: YoonDF-Setup-0.9.20-x64
+          path: ${{ runner.temp }}/out/YoonDF-Setup-0.9.20-x64.exe
           compression-level: 0

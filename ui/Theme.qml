@@ -2,11 +2,12 @@
 pragma Singleton
 import QtQuick
 
-// Every interface token, set around the white and ink-charcoal Y mark: flat
-// white surfaces, hairline edges, one restrained blue for the active tool,
-// the chosen page, focus and the main action. Shadows are kept for the page
-// and for popups. "system" follows the Windows light/dark setting; the PDF
-// page itself always keeps its own colours.
+// Every interface token. Flat white surfaces and hairline edges, with one
+// blue taken from the 윤DF mark (the page on a blue tile) for the active
+// tool, the chosen page, focus and the main action; its pale folded-corner
+// blue tints what is selected. Shadows are kept for the page and for popups.
+// "system" follows the Windows light/dark setting; the PDF page itself
+// always keeps its own colours.
 QtObject {
     id: theme
     property string mode: "system"
@@ -41,17 +42,17 @@ QtObject {
     readonly property color inkFaint: dark ? "#6f747b" : "#9a9ea4"
     readonly property color icon: ink
 
-    // The one accent: active tool, chosen page, focus, the main action.
-    readonly property color accent:        dark ? "#8aaac6" : "#466985"
-    readonly property color accentHover:   dark ? "#9db8d0" : "#3d5d76"
-    readonly property color accentPressed: dark ? "#7898b5" : "#34516a"
-    readonly property color inkOnAccent:   dark ? "#0f1419" : "#ffffff"
-    readonly property color accentSoft:    dark ? "#26313c" : "#e3eaf0"   // selected background
-    readonly property color accentInk:     dark ? "#b5cadd" : "#34516a"   // text on accentSoft
+    // The one accent, the mark's blue: active tool, chosen page, focus, the main action.
+    readonly property color accent:        dark ? "#4da3f0" : "#017ada"
+    readonly property color accentHover:   dark ? "#66b1f3" : "#016cc2"
+    readonly property color accentPressed: dark ? "#3c92df" : "#015ea8"
+    readonly property color inkOnAccent:   dark ? "#06121e" : "#ffffff"
+    readonly property color accentSoft:    dark ? "#16314a" : "#e5f1fc"   // selected background
+    readonly property color accentInk:     dark ? "#9ccbf5" : "#0160ad"   // text on accentSoft
     readonly property color hover:         dark ? "#12ffffff" : "#0b29313a"
     readonly property color pressed:       dark ? "#1fffffff" : "#1529313a"
     readonly property color focusRing:     accent
-    readonly property color selection:     dark ? "#36495b" : "#ccdae6"   // selected text in fields
+    readonly property color selection:     dark ? "#1f4a70" : "#bfdcf7"   // selected text in fields
     readonly property color scrim:         dark ? "#99000000" : "#3329313a"
     readonly property color warnSurface:   dark ? "#3a2f22" : "#fff3e0"
     readonly property color warnInk:       dark ? "#f0cfa0" : "#7a4510"
@@ -62,8 +63,8 @@ QtObject {
     readonly property color tooltipInk:    dark ? "#1c1e21" : "#ffffff"
 
     // Marks drawn over the PDF page, the same in both themes.
-    readonly property color pageMark:     "#466985"
-    readonly property color pageMarkFill: "#22466985"
+    readonly property color pageMark:     "#017ada"
+    readonly property color pageMarkFill: "#22017ada"
     readonly property color searchFill:   "#5cf2c94c"
     readonly property color searchActive: "#99f2b233"
     readonly property color searchEdge:   "#b07f1a"

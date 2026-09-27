@@ -1026,7 +1026,7 @@ ApplicationWindow {
                                 required property var modelData
                                 objectName: "focusTone_"+modelData.key
                                 width: 20; height: 20; radius: 10; color: root.focusTones[modelData.key]
-                                border.width: root.focusTone===modelData.key ? 2 : Theme.hairline; border.color: root.focusTone===modelData.key ? "#8aaac6" : "#66ffffff"
+                                border.width: root.focusTone===modelData.key ? 2 : Theme.hairline; border.color: root.focusTone===modelData.key ? "#4da3f0" : "#66ffffff"
                                 MouseArea { id: toneArea; anchors.fill: parent; anchors.margins: -6; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.focusTone=parent.modelData.key }
                                 ToolTip.visible: toneArea.containsMouse; ToolTip.delay: 400; ToolTip.text: modelData.label
                             }
@@ -1292,8 +1292,8 @@ ApplicationWindow {
                                 x: modelData.displayRect[0]*scale; y: modelData.displayRect[1]*scale
                                 width: (modelData.displayRect[2]-modelData.displayRect[0])*scale
                                 height: (modelData.displayRect[3]-modelData.displayRect[1])*scale
-                                radius: 2; color: blockMouse.containsMouse ? "#14466985" : "transparent"
-                                border.color: blockMouse.containsMouse ? Theme.pageMark : "#66466985"; border.width: blockMouse.containsMouse ? 2 : 1
+                                radius: 2; color: blockMouse.containsMouse ? "#14017ada" : "transparent"
+                                border.color: blockMouse.containsMouse ? Theme.pageMark : "#66017ada"; border.width: blockMouse.containsMouse ? 2 : 1
                                 MouseArea { id: blockMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.IBeamCursor; enabled: root.canEdit; onClicked: pdf.editBlock(parent.modelData) }
                             }
                         }

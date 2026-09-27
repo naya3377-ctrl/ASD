@@ -23,10 +23,12 @@ Qt license texts; distribution metadata and Python LICENSE.txt are preserved.
 
 The sample PDF is created by this project. Its embedded fonts come from
 MuPDF's built-in font resources; their upstream notices remain applicable.
-The 윤DF Y mark (art/logo, provided by the project owner for this application)
-and the vector logo and icons redrawn from it by scripts/make_logo.py belong to
-the project, as does the character art in art/character (not shipped in the
-application since 0.9.19).
+The 윤DF marks (art/logo: the document mark used since 0.9.20 and the earlier
+Y mark, provided by the project owner for this application) and the vector
+logo and icons redrawn from them by scripts/make_logo.py belong to the
+project, as does the character art in art/character (not shipped in the
+application since 0.9.19). The icon lettering is outlined from Pretendard
+Bold (SIL OFL 1.1).
 
 When distributing a compiled binary, provide corresponding application source
 and build scripts, include the license notices of the bundled runtime and

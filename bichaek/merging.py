@@ -62,7 +62,7 @@ def merge_files(items,target,temp_path,events,cancel):
             events.put({'progress':index+1,'total':len(items),'pages':total})
         if cancel.is_set():events.put({'cancelled':True});return
         output.set_toc(bookmarks)
-        output.set_metadata({'title':destination.stem,'creator':'YoonDF 0.9.19'})
+        output.set_metadata({'title':destination.stem,'creator':'YoonDF 0.9.20'})
         output.save(temp_path,garbage=3,deflate=True)
         output.close();output=None
         with fitz.open(temp_path) as verify:

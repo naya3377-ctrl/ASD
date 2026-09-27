@@ -1,14 +1,15 @@
-"""Draw the 윤DF mark: an ink-charcoal Y on a plain white rounded tile.
+"""Draw the 윤DF mark: a white page with a folded corner on a blue tile.
 
-The Y follows the refined logo (art/logo/YoonDF-Refined-Logo.png): two
-arms with flat tops meeting in a sharp notch, a straight stem, softly
-rounded ends. It is drawn here as a vector path so every size is crisp;
-the tile keeps a hairline edge so it still reads on a white taskbar or
-window. Pixel sizes get an edge exactly one device pixel wide.
+The design follows art/logo/YoonDF-Document-Logo.png: a rounded square in
+the app's blue, a white page with softly rounded corners, its top right
+corner folded over in pale blue, and "윤DF" set in the same blue at the foot
+of the page. It is drawn here as vectors so every size is crisp; the
+lettering is Pretendard Bold (assets/fonts), outlined and thickened to the
+weight of the original. Small icons leave the lettering out and enlarge the
+page so it still reads in a taskbar.
 
-Writes assets/logo/mark.svg (the tile and Y, for the interface),
-assets/icon/<size>.png and assets/icon.ico.
-Needs PySide6 only.
+Writes assets/logo/mark.svg (for the interface), assets/icon/<size>.png and
+assets/icon.ico. Needs PySide6 only.
 Usage: python scripts/make_logo.py
 SPDX-License-Identifier: AGPL-3.0-or-later
 """
@@ -19,14 +20,13 @@ from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 ROOT = Path(__file__).resolve().parent.parent
-INK = "#29313A"          # the Y, and the interface's primary ink
-TILE = "#FFFFFF"
-EDGE = "#D9DCE0"
+BLUE = "#017ADA"         # the tile and the lettering; the interface accent
+FOLD = "#A0CFFA"         # the folded corner
+PAGE = "#FFFFFF"
 BOX = 1024               # viewBox edge
-MARGIN = 0.035           # space around the tile, as a share of the box
-CORNER = 0.22            # tile corner radius, as a share of the tile edge
 SIZES = (16, 20, 24, 32, 40, 48, 64, 128, 256, 512)
 ICO_SIZES = (16, 20, 24, 32, 40, 48, 64, 128, 256)
+WORD = "윤DF"
 
 
 def fillet_path(points, radii):
@@ -52,46 +52,56 @@ def fillet_path(points, radii):
     return " ".join(parts) + " Z"
 
 
-def y_path(left, top, width):
-    """The Y in a box `width` wide whose top-left is (left, top). Proportions
-    are measured from the refined logo: arm slope 0.72, arm and stem about
-    0.27 of the width, the notch at 0.33 of the height."""
-    s = width / 744.0            # the measured Y is 744 units wide, 653 tall
-    cx = 372.0
-    def p(x, y): return (left + x * s, top + y * s)
-    outer = lambda y: .713 * y                 # left arm, outside edge
-    inner = lambda y: 211.8 + .743 * y         # left arm, inside edge
-    notch = (cx - 211.8) / .743                # where the two inside edges meet
-    half = 96.5                                # half the stem
-    joint = (cx - half) / .713                 # outside edge meets the stem
-    points = [p(outer(0), 0), p(inner(0), 0), p(cx, notch), p(2 * cx - inner(0), 0),
-              p(2 * cx - outer(0), 0), p(cx + half, joint), p(cx + half, 653), p(cx - half, 653),
-              p(cx - half, joint)]
-    radii = [r * s for r in (20, 20, 4, 20, 20, 14, 20, 20, 14)]
-    return fillet_path(points, radii)
+def word_path(centre_x, baseline, width):
+    """"윤DF" as SVG path data, `width` wide, centred, sitting on `baseline`."""
+    from PySide6.QtGui import QFont, QFontDatabase, QPainterPath, QTransform
+    QFontDatabase.addApplicationFont(str(ROOT / "assets" / "fonts" / "Pretendard-Bold.otf"))
+    font = QFont("Pretendard"); font.setWeight(QFont.Weight.Bold); font.setPixelSize(200)
+    path = QPainterPath(); path.addText(0, 0, font, WORD)
+    box = path.boundingRect()
+    scale = width / box.width()
+    path = QTransform().translate(centre_x, baseline).scale(scale, scale).translate(-box.center().x(), 0).map(path)
+    data, i = [], 0
+    while i < path.elementCount():
+        e = path.elementAt(i)
+        if e.type == QPainterPath.ElementType.MoveToElement:
+            data.append(("Z " if data else "") + f"M{e.x:.2f},{e.y:.2f}"); i += 1
+        elif e.type == QPainterPath.ElementType.LineToElement:
+            data.append(f"L{e.x:.2f},{e.y:.2f}"); i += 1
+        else:
+            c1, c2 = path.elementAt(i + 1), path.elementAt(i + 2)
+            data.append(f"C{e.x:.2f},{e.y:.2f} {c1.x:.2f},{c1.y:.2f} {c2.x:.2f},{c2.y:.2f}"); i += 3
+    return " ".join(data) + " Z", box.height() * scale
 
 
-def svg(edge_width, small=False):
-    """Tile and Y on a BOX viewBox; `edge_width` in viewBox units. Small
-    icons fill the square and enlarge the Y so it reads in a taskbar."""
-    m = 0 if small else BOX * MARGIN
-    tile = BOX - 2 * m
-    radius = tile * (.18 if small else CORNER)
-    inset = edge_width / 2
-    y_width = tile * (.86 if small else .775)
-    y_left = m + (tile - y_width) / 2
-    y_top = m + tile * (.12 if small else .178)
-    return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {BOX} {BOX}">'
-            f'<rect x="{m + inset:.2f}" y="{m + inset:.2f}" width="{tile - 2 * inset:.2f}" height="{tile - 2 * inset:.2f}" '
-            f'rx="{radius - inset:.2f}" fill="{TILE}" stroke="{EDGE}" stroke-width="{edge_width:.2f}"/>'
-            f'<path d="{y_path(y_left, y_top, y_width)}" fill="{INK}"/></svg>')
+def svg(small=False):
+    """The mark on a BOX viewBox. Small icons fill the square, drop the
+    lettering and enlarge the page."""
+    margin = 0 if small else BOX * .035
+    tile = BOX - 2 * margin
+    parts = [f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {BOX} {BOX}">',
+             f'<rect x="{margin:.2f}" y="{margin:.2f}" width="{tile:.2f}" height="{tile:.2f}" rx="{tile * (.2 if small else .19):.2f}" fill="{BLUE}"/>']
+    # Proportions measured from the original: the page is half the tile wide.
+    pw, ph = tile * (.6 if small else .5055), tile * (.74 if small else .676)
+    left = margin + (tile - pw) / 2
+    top = margin + tile * (.13 if small else .173)
+    right, bottom = left + pw, top + ph
+    radius, fold = pw * .127, pw * (.36 if small else .322)
+    parts.append(f'<path d="{fillet_path([(left, top), (right - fold, top), (right, top + fold), (right, bottom), (left, bottom)], [radius, pw * .03, pw * .015, radius, radius])}" fill="{PAGE}"/>')
+    parts.append(f'<path d="{fillet_path([(right - fold, top), (right, top + fold), (right - fold, top + fold)], [pw * .03, pw * .008, pw * .088])}" fill="{FOLD}"/>')
+    if not small:
+        word, height = word_path(left + pw / 2, top + ph * .885, pw * .503)
+        # Pretendard Bold, thickened by a stroke to the original's heavier weight.
+        parts.append(f'<path d="{word}" fill="{BLUE}" fill-rule="nonzero" stroke="{BLUE}" stroke-width="{height * .045:.2f}" stroke-linejoin="round"/>')
+    parts.append("</svg>")
+    return "".join(parts)
 
 
 def render(size):
     from PySide6.QtCore import QByteArray, QBuffer, QIODevice, QRectF, Qt
     from PySide6.QtGui import QImage, QPainter
     from PySide6.QtSvg import QSvgRenderer
-    renderer = QSvgRenderer(QByteArray(svg(BOX / size, small=size <= 24).encode()))
+    renderer = QSvgRenderer(QByteArray(svg(small=size <= 48).encode()))
     image = QImage(size, size, QImage.Format.Format_ARGB32_Premultiplied)
     image.fill(Qt.GlobalColor.transparent)
     painter = QPainter(image)
@@ -119,9 +129,7 @@ def main():
     from PySide6.QtGui import QGuiApplication
     app = QGuiApplication.instance() or QGuiApplication([])
     (ROOT / "assets" / "logo").mkdir(parents=True, exist_ok=True)
-    # The interface draws the mark at many sizes; a hairline of 1/96 of the
-    # tile reads as one pixel at about 96 px and stays light when larger.
-    (ROOT / "assets" / "logo" / "mark.svg").write_text(svg(BOX / 96), encoding="utf-8")
+    (ROOT / "assets" / "logo" / "mark.svg").write_text(svg(), encoding="utf-8")
     folder = ROOT / "assets" / "icon"; folder.mkdir(parents=True, exist_ok=True)
     for old in folder.glob("*.png"):
         old.unlink()

@@ -1327,8 +1327,29 @@ class Bridge(QObject):
     @Property(bool, notify=annotationsChanged)
     def annotationsLoading(self): return self._annotation_loading
 
+    def _annotation_tree(self):
+        """The threaded list and its two views, rebuilt only when a page's
+        list is replaced (QML reads these many times per change)."""
+        key = (id(self._annotation_pages), tuple((page, id(items)) for page, items in sorted(self._annotation_pages.items())))
+        cached = getattr(self, '_annotation_cache', None)
+        if cached is None or cached[0] != key:
+            from .annotation_views import split_views
+            tree = self._thread_annotations()
+            cached = self._annotation_cache = (key, tree, *split_views(tree))
+        return cached
+
     @Property('QVariantList', notify=annotationsChanged)
-    def annotations(self):
+    def annotations(self): return self._annotation_tree()[1]
+
+    # Memos (written text, notes, reply threads) and marked passages
+    # (highlight, underline, strike-out) as separate lists; see annotation_views.
+    @Property('QVariantList', notify=annotationsChanged)
+    def annotationNotes(self): return self._annotation_tree()[2]
+
+    @Property('QVariantList', notify=annotationsChanged)
+    def annotationMarks(self): return self._annotation_tree()[3]
+
+    def _thread_annotations(self):
         flat = [a for page in sorted(self._annotation_pages) for a in self._annotation_pages[page]]
         # Place nested replies immediately below the parent. Malformed cycles
         # and missing parents are still listed once, without infinite recursion.
@@ -1505,6 +1526,32 @@ class Bridge(QObject):
                                       QMessageBox.Yes | QMessageBox.Cancel, QMessageBox.Cancel)
         if answer != QMessageBox.Yes: return
         self.edit('delete_annotation', {'page':item['page'], 'identifier':item['id'], 'revision':item['revision']})
+
+    @Slot(int, str, str)
+    def recolorAnnotation(self, page, identifier, color):
+        """Change only the colour of a mark; its memo, author and replies stay."""
+        from .annotations import color_rgb
+        item = next((a for a in self.annotations if a['page'] == page and a['id'] == identifier), None)
+        if not item or not item.get('editable') or not self.canAnnotate or self._annotation_editor_open: return
+        try: color_rgb(color)
+        except ValueError: return
+        if color.lower() == str(item.get('color', '')).lower(): return
+        self.edit('update_annotation', {'page': page, 'identifier': identifier, 'content': item.get('content', ''),
+                                        'author': item.get('author', ''), 'color': color, 'revision': item['revision']})
+
+    @Slot(result=int)
+    def copyAnnotationSummary(self):
+        """Copy every marked passage, page by page with its memo, as plain text."""
+        from .annotation_views import summary_text
+        marks = self.annotationMarks
+        if not marks:
+            self.set_status("복사할 형광펜이 없어요.")
+            return 0
+        # Quotes are empty when the PDF forbids copying (see annotations.py),
+        # so only the reader's own memos leave such a document.
+        QGuiApplication.clipboard().setText(summary_text(marks, self._state.get("name", "")))
+        self.set_status(f"형광펜 {len(marks)}개를 쪽 순서대로 복사했어요.")
+        return len(marks)
 
     @Slot()
     def copySelection(self):

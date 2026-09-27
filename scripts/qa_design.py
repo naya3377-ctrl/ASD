@@ -118,6 +118,17 @@ def main():
             chars=c.textLayout(0)['chars'];c.selectCharacters(0,0,12)
             c.selectAnnotation(0,c.annotations[0]['id'])
             shot(f'comments-{theme}')
+            # The marked passages, apart from the memos.
+            click('commentsMarksTab');wait(lambda:item('commentsPanel').property('view')=='marks')
+            shot(f'marks-{theme}')
+            click('commentsNotesTab');wait(lambda:item('commentsPanel').property('view')=='notes')
+            # Editing a memo: the memo only, without the marked passage or its colours.
+            c.selectAnnotation(0,c.annotations[0]['id']);c.editSelectedAnnotation('edit')
+            wait(lambda:item('annotationEditor').property('visible') and item('commentBody').property('visible'))
+            assert not item('commentFormQuote').property('visible') and item('commentFormColors').property('count')==0
+            shot(f'memo-edit-{theme}')
+            click('cancelComment');wait(lambda:not item('annotationEditor').property('visible'))
+            c.selectAnnotation(0,c.annotations[0]['id'])
             c.composeSelectionComment();wait(lambda:item('annotationEditor').property('visible'))
             item('commentBody').setProperty('text','제목의 겹낫표는 도록 표기와 같게 유지')
             shot(f'draft-{theme}')
