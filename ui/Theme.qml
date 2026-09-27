@@ -2,90 +2,98 @@
 pragma Singleton
 import QtQuick
 
-// Every interface token. Minimal monochrome: black, white and the grays
-// between them; serif type; lines instead of shadows; square corners; state
-// changes that are instant. Emphasis is inversion (black block, white ink),
-// never a colour. "system" follows the Windows light/dark setting; the PDF page
-// itself always stays paper white. Comment colours are the document's own
-// data and are the only colours shown.
+// Every interface token. The shapes follow macOS Preview: one light toolbar,
+// a soft sidebar, rounded controls, pages that float on soft shadows, quick
+// eased motion. The colours are amekaji, American casual workwear as Japan
+// wears it, and the character's own clothes: indigo denim (the one accent),
+// brown leather and brass, olive, khaki and unbleached ecru, with the
+// character's near-black fur as ink. "system" follows the Windows light/dark
+// setting; the PDF page itself always stays paper white.
 QtObject {
     id: theme
     property string mode: "system"
     readonly property bool dark: mode === "dark" || (mode === "system" && Qt.styleHints.colorScheme === Qt.ColorScheme.Dark)
 
-    // Absolutes, the same in both themes.
-    readonly property color black: "#000000"
+    // Amekaji palette. In the dark theme denim is worn pale.
+    readonly property color indigo:      dark ? "#8ea9d8" : "#34507f"   // raw denim
+    readonly property color indigoDeep:  dark ? "#a9bfe4" : "#253b63"
+    readonly property color indigoSoft:  dark ? "#2b3649" : "#dfe6f1"   // faded chambray
+    readonly property color leather:     dark ? "#cf9a6c" : "#8b5a35"   // bow tie, suspenders
+    readonly property color leatherSoft: dark ? "#3a2d22" : "#efe2cf"
+    readonly property color brass:       dark ? "#d9b467" : "#b08a3e"   // buttons
+    readonly property color olive:       dark ? "#aaa874" : "#6b6a3c"
+    readonly property color burgundy:    dark ? "#e38d7c" : "#9a3b2e"
     readonly property color white: "#ffffff"
+    readonly property color black: "#000000"
 
     // Surfaces, from the back of the window to the front.
-    readonly property color canvas:     dark ? "#0a0a0a" : "#f5f5f5"   // behind the pages
-    readonly property real canvasLineOpacity: dark ? .05 : .035       // its ruled texture
-    // Title and status bars: black, lifted a step in the dark theme so the
-    // black toolbar and the open tab still read as separate from them.
-    readonly property color chrome:     dark ? "#171717" : "#000000"
-    readonly property color chromeInk:  "#ffffff"
-    readonly property color chromeMuted: "#a3a3a3"
-    readonly property color chromeLine: dark ? "#3a3a3a" : "#2e2e2e"
-    readonly property color surface:    dark ? "#000000" : "#ffffff"
-    readonly property color surfaceAlt: dark ? "#000000" : "#ffffff"
-    readonly property color raised:     dark ? "#000000" : "#ffffff"
-    readonly property color field:      dark ? "#000000" : "#ffffff"
-    readonly property color muted:      dark ? "#141414" : "#f5f5f5"
+    readonly property color window:  dark ? "#1b1815" : "#f5f0e7"   // ecru
+    readonly property color chrome:  dark ? "#23201b" : "#efe9de"   // toolbar and tab bar
+    readonly property color sidebar: dark ? "#1f1c18" : "#ebe4d7"
+    readonly property color canvas:  dark ? "#141210" : "#e4dccd"   // behind the pages
+    readonly property color surface: dark ? "#221e1a" : "#f7f3ec"   // side panels
+    readonly property color raised:  dark ? "#2d2823" : "#fffdf9"   // cards, popups, the chosen segment
+    readonly property color field:   dark ? "#1c1916" : "#fffdf9"
+    readonly property color well:    dark ? "#16ffffff" : "#0f2a2420"   // the groove of a segmented control
 
-    // Lines. Structure is drawn in ink; hairlines divide quietly.
-    readonly property color line:       dark ? "#ffffff" : "#000000"
-    readonly property color lineStrong: line
-    readonly property color lineSoft:   dark ? "#262626" : "#e5e5e5"
+    // Lines.
+    readonly property color lineSoft:   dark ? "#34302a" : "#e2d8c8"
+    readonly property color line:       dark ? "#48403a" : "#d3c7b3"
+    readonly property color lineStrong: dark ? "#655a4e" : "#b3a58e"
 
-    // Text.
-    readonly property color ink:      dark ? "#ffffff" : "#000000"
-    readonly property color inkSoft:  dark ? "#e5e5e5" : "#1a1a1a"
-    readonly property color inkMuted: dark ? "#a3a3a3" : "#525252"
-    readonly property color inkFaint: dark ? "#6b6b6b" : "#8a8a8a"
+    // Text: the character's fur.
+    readonly property color ink:      dark ? "#f2ebe0" : "#2a2420"
+    readonly property color inkSoft:  dark ? "#ddd3c5" : "#463c33"
+    readonly property color inkMuted: dark ? "#a99b8b" : "#7a6d5f"
+    readonly property color inkFaint: dark ? "#776b5f" : "#aa9d8b"
 
-    // Interaction. Active, pressed and primary states invert.
-    readonly property color accent:      ink                 // the inverted block
-    readonly property color inkOnAccent: surface             // ink on it
-    readonly property color accentSoft:  muted               // a quiet selected row
-    readonly property color hover:       muted
-    readonly property color pressed:     lineSoft
-    readonly property color focusRing:   ink
-    readonly property color selection:   dark ? "#66ffffff" : "#33000000"
-    readonly property color scrim:       "#66000000"
-    readonly property color warnSurface: muted
-    readonly property color warnInk:     ink
-
+    // Interaction.
+    readonly property color accent:        indigo
+    readonly property color accentHover:   dark ? "#a1b8e0" : "#2c4570"
+    readonly property color accentPressed: dark ? "#7896c9" : "#233a60"
+    readonly property color inkOnAccent:   dark ? "#101624" : "#ffffff"
+    readonly property color accentSoft:    indigoSoft
+    readonly property color accentInk:     dark ? "#bccdec" : "#2d4674"
+    readonly property color hover:         dark ? "#14ffffff" : "#0e2a2420"
+    readonly property color pressed:       dark ? "#24ffffff" : "#1a2a2420"
+    readonly property color focusRing:     dark ? "#8ea9d8" : "#5b79ae"
+    readonly property color selection:     dark ? "#4a5d82" : "#c8d4ea"
+    readonly property color scrim:         dark ? "#8c000000" : "#4d2a2420"
+    readonly property color warnSurface:   leatherSoft
+    readonly property color warnInk:       dark ? "#f0d2b4" : "#6b4222"
+    readonly property color danger:        burgundy
+    readonly property color hud:           "#e6241f1b"                  // floating dark controls
+    readonly property color hudInk:        "#f5f0e7"
     readonly property color icon: ink
-    readonly property color pageEdge: dark ? "#3d3d3d" : "#000000"
 
     // Marks drawn over the white PDF page, the same in both themes.
-    readonly property color pageMark:      "#000000"
-    readonly property color pageMarkFill:  "#1f000000"
+    readonly property color pageMark:     "#34507f"
+    readonly property color pageMarkFill: "#2434507f"
+    readonly property color searchFill:   "#5cd9b24c"
+    readonly property color searchActive: "#99d9a93c"
+    readonly property color searchEdge:   "#a07a2c"
 
-    // Geometry: square corners, lines by weight.
-    readonly property int radius: 0
+    // Geometry.
+    readonly property int radiusSmall: 5
+    readonly property int radius: 7
+    readonly property int radiusLarge: 11
     readonly property int hairline: 1
-    readonly property int border: 1        // controls, cards, fields
-    readonly property int borderStrong: 2  // focus, current page, selected card
-    readonly property int rule: 4          // the heavy rule under a section title
 
-    // Motion: instant state changes.
-    readonly property int snap: 90
+    // Motion: quick and eased.
+    readonly property int fast: 120
+    readonly property int smooth: 220
 
-    // Type. YoonDF Display (Playfair Display) for headlines, YoonDF Text
-    // (Source Serif 4) for text, JetBrains Mono for numbers and labels; Korean
-    // in each comes from Nanum Myeongjo (see bichaek/typefaces.py).
-    readonly property string displayFamily: "YoonDF Display"
-    readonly property string textFamily: "YoonDF Text"
-    readonly property string monoFamily: "JetBrains Mono"
-    readonly property int label: 11      // mono labels, spaced
+    // Type: Pretendard throughout (see bichaek/typefaces.py).
+    readonly property string family: "Pretendard"
+    readonly property int caption: 11
     readonly property int small: 12
     readonly property int body: 13
-    readonly property int lead: 15
-    readonly property int title: 26      // panel and dialog titles
-    readonly property int headline: 40
-    readonly property int hero: 112      // the start screen's name
-    readonly property real labelSpacing: 1.4
+    readonly property int callout: 14
+    readonly property int headline: 15
+    readonly property int title3: 17
+    readonly property int title2: 21
+    readonly property int title: 28
+    readonly property int display: 40
 
     function iconUrl(name, tone) {
         var hex = String(tone === undefined ? icon : tone);

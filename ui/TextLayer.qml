@@ -99,7 +99,7 @@ Item {
             if (layer.selection.page !== layer.pageNumber) return;
             var chars = layer.layout.chars;
             var a = layer.selection.start, b = Math.min(chars.length,layer.selection.end);
-            ctx.fillStyle = "rgba(0, 0, 0, 0.20)";   // the page is paper white in both themes
+            ctx.fillStyle = "rgba(52, 80, 127, 0.28)";   // denim; the page is paper white in both themes
             // Per-line unions keep inter-character spaces selected too.
             var rect = null, line = -1;
             function paint() {
@@ -183,7 +183,7 @@ Item {
         x: pointer.notePoint.x*layer.factor; y: pointer.notePoint.y*layer.factor
         width: pointer.pressedAnnotation ? (pointer.pressedAnnotation.rect[2]-pointer.pressedAnnotation.rect[0])*layer.factor : 0
         height: pointer.pressedAnnotation ? (pointer.pressedAnnotation.rect[3]-pointer.pressedAnnotation.rect[1])*layer.factor : 0
-        color: Theme.pageMarkFill; border.color: Theme.pageMark; border.width: 2; z: 10
+        color: Theme.pageMarkFill; border.color: Theme.pageMark; border.width: 2; radius: 3; z: 10
     }
     Timer {
         interval: 25; repeat: true; running: pointer.pressed && pointer.moved && !pointer.draggingNote

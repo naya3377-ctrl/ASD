@@ -1,4 +1,4 @@
-"""Screens of the monochrome design, in light and dark, with the bundled fonts.
+"""Screens of the Preview-style amekaji design, in light and dark, with the bundled font.
 
 Saves test-output/design-*.png for review and fails on QML warnings.
 SPDX-License-Identifier: AGPL-3.0-or-later
@@ -55,8 +55,8 @@ def main():
     QQuickStyle.setStyle('Basic');app=QApplication([])
     families=install(root/'assets'/'fonts')
     from PySide6.QtGui import QFont
-    app.setFont(QFont('YoonDF Text',10))   # as bichaek/app.py does
-    assert {'YoonDF Display','YoonDF Text','JetBrains Mono','NanumMyeongjo'}<=families,families
+    app.setFont(QFont('Pretendard',10))   # as bichaek/app.py does
+    assert 'Pretendard' in families,families
     warnings=[]
     qInstallMessageHandler(lambda k,c,m: warnings.append(m) if ('file:' in m or 'Error' in m) else None)
     images=Images();documents=Documents(images);b=documents.activeBridge
@@ -120,6 +120,10 @@ def main():
             if d.metaObject().className().startswith('AppDialog') and d.property('visible'):d.close()
         QTest.qWait(150)
         c.showMerge();QTest.qWait(300);shot('merge');item('mergeDialog').close();QTest.qWait(150)
+        from PySide6.QtCore import QMetaObject
+        QMetaObject.invokeMethod(item('aboutDialog'),'open')
+        QTest.qWait(400);shot('about')
+        assert item('aboutCharacter').property('visible')
         assert not warnings,warnings
         print('PASS: design screens saved to test-output/design-*.png; bundled fonts loaded; no QML warnings',flush=True)
     finally:

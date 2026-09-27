@@ -2,14 +2,18 @@
 import QtQuick
 import QtQuick.Controls
 
-// A thin ink bar that shows while scrolling or under the pointer.
+// An overlay scroll bar: a thin rounded thumb that appears while scrolling
+// and fattens under the pointer.
 ScrollBar {
     id: bar
-    padding: 2
+    padding: 3
     contentItem: Rectangle {
-        implicitWidth: bar.pressed || bar.hovered ? 6 : 4; implicitHeight: bar.pressed || bar.hovered ? 6 : 4
+        implicitWidth: bar.hovered || bar.pressed ? 8 : 5; implicitHeight: bar.hovered || bar.pressed ? 8 : 5
+        radius: width/2
         color: Theme.ink
-        opacity: bar.policy === ScrollBar.AlwaysOn || bar.active || bar.hovered ? (bar.pressed ? 1 : .55) : 0
+        opacity: bar.policy === ScrollBar.AlwaysOn || bar.active || bar.hovered ? (bar.pressed ? .5 : .32) : 0
+        Behavior on opacity { NumberAnimation { duration: Theme.smooth } }
+        Behavior on implicitWidth { NumberAnimation { duration: Theme.fast } }
     }
     background: Item { }
 }

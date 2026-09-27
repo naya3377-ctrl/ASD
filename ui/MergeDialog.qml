@@ -6,19 +6,26 @@ Dialog {
     id: dialog; objectName: "mergeDialog"
     property var controller: bridge
     width: Math.min(780,parent.width-60); height: Math.min(650,parent.height-60)
-    anchors.centerIn: parent; modal: true; padding: 26
+    anchors.centerIn: parent; modal: true; padding: 22
     onClosed: controller.closeMerge()
     closePolicy: controller.mergeBusy ? Popup.NoAutoClose : Popup.CloseOnEscape
-    background: Block { fill: Theme.surface }
+    background: Block { fill: Theme.raised; radius: Theme.radiusLarge+2; shadow: "large" }
     Overlay.modal: Rectangle { color: Theme.scrim }
+    enter: Transition {
+        NumberAnimation { property: "opacity"; from: 0; to: 1; duration: Theme.smooth; easing.type: Easing.OutCubic }
+        NumberAnimation { property: "scale"; from: .96; to: 1; duration: Theme.smooth; easing.type: Easing.OutCubic }
+    }
     header: Item {
-        height: 104
-        Column {
-            x: 26; y: 24; spacing: 8
-            Row { spacing: 12; BrandMark { size: 26; anchors.verticalCenter: parent.verticalCenter } Text { text: "PDF 결합"; font.family: Theme.displayFamily; font.pixelSize: Theme.title; font.weight: Font.Bold; color: Theme.ink } }
-            Text { text: "여러 문서를 원하는 순서로 하나의 PDF에 담으세요."; font.pixelSize: Theme.body; color: Theme.inkMuted }
+        height: 88
+        Row {
+            x: 22; y: 22; spacing: 12
+            BrandMark { size: 44; anchors.verticalCenter: parent.verticalCenter }
+            Column {
+                anchors.verticalCenter: parent.verticalCenter; spacing: 4
+                Text { text: "PDF 결합"; font.pixelSize: Theme.title3; font.weight: Font.Bold; color: Theme.ink }
+                Text { text: "여러 문서를 원하는 순서로 하나의 PDF에 담으세요."; font.pixelSize: Theme.small; color: Theme.inkMuted }
+            }
         }
-        Rectangle { x: 26; anchors.bottom: parent.bottom; width: parent.width-52; height: Theme.rule; color: Theme.ink }
         ActionButton { anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 17; glyph: "close"; hint: "닫기"; enabled: !controller.mergeBusy; onClicked: dialog.close() }
     }
     contentItem: ColumnLayout {
@@ -28,10 +35,10 @@ Dialog {
             ActionButton { objectName: "mergeAddFiles"; glyph: "add"; text: "PDF 추가"; outlined: true; enabled: !controller.mergeBusy; onClicked: controller.chooseMergeFiles() }
             ActionButton { glyph: "open"; text: "현재 문서 추가"; enabled: !controller.mergeBusy && controller.document.count>0; onClicked: controller.addCurrentToMerge() }
             Item { Layout.fillWidth: true }
-            Text { text: controller.mergeItems.length+"개 파일  ·  "+controller.mergePageCount+"페이지"; font.family: Theme.monoFamily; font.pixelSize: Theme.small; color: Theme.inkMuted }
+            Text { text: controller.mergeItems.length+"개 파일  ·  "+controller.mergePageCount+"페이지"; font.features: ({ "tnum": 1 }); font.pixelSize: Theme.small; color: Theme.inkMuted }
         }
         Rectangle {
-            Layout.fillWidth: true; Layout.fillHeight: true; color: Theme.muted; border.color: Theme.lineStrong; border.width: Theme.border
+            Layout.fillWidth: true; Layout.fillHeight: true; color: Theme.sidebar; radius: Theme.radiusLarge; border.color: Theme.lineSoft; border.width: Theme.hairline
             ListView {
                 id: list; objectName: "mergeList"; anchors.fill: parent; anchors.margins: 10
                 clip: true; spacing: 8; model: controller.mergeItems
@@ -39,17 +46,17 @@ Dialog {
                 delegate: Rectangle {
                     required property var modelData
                     required property int index
-                    width: list.width-8; height: 84; color: Theme.raised; border.color: Theme.lineSoft; border.width: Theme.border
+                    width: list.width-8; height: 80; radius: Theme.radius+2; color: Theme.raised; border.color: Theme.lineSoft; border.width: Theme.hairline
                     RowLayout {
                         anchors.fill: parent; anchors.margins: 12; spacing: 14
-                        Text { text: (index+1).toString().padStart(2,"0"); font.family: Theme.monoFamily; font.pixelSize: Theme.small; color: Theme.ink; Layout.preferredWidth: 23 }
+                        Text { text: index+1; font.features: ({ "tnum": 1 }); font.pixelSize: Theme.small; font.weight: Font.Bold; color: Theme.inkMuted; Layout.preferredWidth: 18; horizontalAlignment: Text.AlignRight }
                         Rectangle {
-                            Layout.preferredWidth: 42; Layout.preferredHeight: 56; color: "white"; border.color: Theme.pageEdge
+                            Layout.preferredWidth: 42; Layout.preferredHeight: 56; color: "white"; border.color: Theme.lineSoft; radius: 2
                             Image { anchors.fill: parent; anchors.margins: 1; source: modelData.preview; fillMode: Image.PreserveAspectFit; asynchronous: true }
                         }
                         ColumnLayout {
                             Layout.fillWidth: true; spacing: 6
-                            Text { text: modelData.name; font.pixelSize: Theme.lead-1; font.weight: Font.Bold; color: Theme.ink; elide: Text.ElideMiddle; Layout.fillWidth: true }
+                            Text { text: modelData.name; font.pixelSize: Theme.callout; font.weight: Font.DemiBold; color: Theme.ink; elide: Text.ElideMiddle; Layout.fillWidth: true }
                             Text { text: modelData.count+"페이지"+(modelData.live ? "  ·  현재 편집 내용 포함" : ""); font.pixelSize: Theme.small; color: Theme.inkMuted }
                         }
                         ActionButton { glyph: "up"; hint: "앞으로"; enabled: !controller.mergeBusy && index>0; onClicked: controller.moveMergeItem(index,index-1) }
@@ -61,7 +68,7 @@ Dialog {
             Column {
                 visible: controller.mergeItems.length===0; anchors.centerIn: parent; spacing: 12
                 Icon { size: 36; name: "merge"; anchors.horizontalCenter: parent.horizontalCenter; opacity: .65 }
-                Text { text: "결합할 PDF를 이곳에 끌어 놓으세요"; color: Theme.inkMuted; font.pixelSize: 14 }
+                Text { text: "결합할 PDF를 이곳에 끌어 놓으세요"; color: Theme.inkMuted; font.pixelSize: Theme.callout }
             }
             DropArea { anchors.fill: parent; enabled: !controller.mergeBusy; onDropped: function(drop) { if(drop.hasUrls) controller.addMergePaths(drop.urls); } }
         }

@@ -2,77 +2,81 @@
 import QtQuick
 import QtQuick.Controls
 
-// Every button in the app. Emphasis is inversion, never colour:
-//  - ghost (default): no frame; a hairline frame on hover, inverted when
-//    `active` or pressed
-//  - primary: a black block that inverts on hover
-//  - outlined: a thin frame that fills black on hover
-//  - tab: text that is underlined when `active` (panel switches)
-//  - inverted: a ghost button sitting on a black bar
+// Every button in the app, shaped like macOS controls:
+//  - ghost (default): a toolbar button; a soft tint on hover, denim-tinted
+//    when `active` (the tool in use)
+//  - primary: the indigo push button
+//  - outlined: the raised bezel push button
+//  - tab: a segment of a Segmented control (the control draws the chosen pill)
+//  - hud: a button on dark floating controls (slide show, focus reading)
 Button {
     id: control
     property bool active: false
     property bool primary: false
     property bool outlined: false
     property bool tab: false
+    property bool hud: false
     property bool leftAligned: false
     property bool compact: false
-    property bool inverted: false
     property string glyph: ""
     property string hint: ""
     property string shortcutText: ""
-    readonly property bool framed: primary || outlined
-    // The colours this button is drawn with, before and after inversion.
-    readonly property color paper: inverted ? Theme.chrome : Theme.surface
-    readonly property color ink: inverted ? Theme.chromeInk : Theme.ink
-    readonly property bool filled: !tab && (primary ? !(hovered && !down) : outlined ? (hovered || down) : (active || down))
-    readonly property color fillColor: filled ? ink : "transparent"
-    readonly property color tone: filled ? paper : tab && !active ? Theme.inkMuted : ink
-    implicitHeight: compact ? 30 : 34
-    implicitWidth: Math.max(implicitHeight, contentItem.implicitWidth + (text.length ? 26 : 16))
-    leftPadding: text.length ? 13 : 8; rightPadding: text.length ? 13 : 8
+    readonly property color fillColor: primary ? (down ? Theme.accentPressed : hovered ? Theme.accentHover : Theme.accent)
+        : outlined ? (down ? Qt.darker(Theme.raised, 1.06) : Theme.raised)
+        : tab ? (hovered && !active ? Theme.hover : "transparent")
+        : hud ? (down ? "#40ffffff" : hovered ? "#26ffffff" : active ? "#33ffffff" : "transparent")
+        : active ? Theme.accentSoft : down ? Theme.pressed : hovered ? Theme.hover : "transparent"
+    readonly property color tone: primary ? Theme.inkOnAccent : hud ? Theme.hudInk
+        : tab ? (active ? Theme.ink : Theme.inkSoft)
+        : active ? Theme.accentInk : Theme.ink
+    implicitHeight: compact ? 28 : 32
+    implicitWidth: Math.max(implicitHeight, contentItem.implicitWidth + (text.length ? 24 : 12))
+    leftPadding: text.length ? 12 : 6; rightPadding: text.length ? 12 : 6
+    font.family: Theme.family
     font.pixelSize: Theme.body
-    font.weight: primary || active ? Font.Bold : Font.Normal
-    font.letterSpacing: text.length ? .4 : 0
+    font.weight: primary || (tab && active) ? Font.DemiBold : Font.Medium
     hoverEnabled: true
     focusPolicy: Qt.TabFocus
-    opacity: enabled ? 1 : .3
+    opacity: enabled ? 1 : .38
+    Behavior on opacity { NumberAnimation { duration: Theme.fast } }
     contentItem: Item {
         implicitWidth: contentRow.implicitWidth; implicitHeight: 20
         Row {
-            id: contentRow; spacing: 8; anchors.verticalCenter: parent.verticalCenter
+            id: contentRow; spacing: 7; anchors.verticalCenter: parent.verticalCenter
             x: control.leftAligned ? 0 : (parent.width-width)/2
-            Icon { name: control.glyph; tone: control.tone; anchors.verticalCenter: parent.verticalCenter; size: control.glyph.length ? 18 : 0 }
+            Icon { name: control.glyph; tone: control.tone; anchors.verticalCenter: parent.verticalCenter; size: control.glyph.length ? 17 : 0 }
             Text {
                 visible: control.text.length>0; text: control.text; font: control.font
                 color: control.tone; anchors.verticalCenter: parent.verticalCenter
             }
             Text {
                 visible: control.shortcutText.length>0 && control.leftAligned; text: control.shortcutText
-                font.family: Theme.monoFamily; font.pixelSize: Theme.label; color: control.filled ? control.paper : Theme.inkMuted
+                font.family: Theme.family; font.pixelSize: Theme.caption; color: Theme.inkMuted
                 anchors.verticalCenter: parent.verticalCenter
             }
         }
     }
     background: Item {
+        Shadow { target: face; level: "small"; visible: control.primary || control.outlined; opacity: control.down ? .4 : .75 }
         Rectangle {
-            anchors.fill: parent
+            id: face; anchors.fill: parent
+            radius: Theme.radius
             color: control.fillColor
-            border.color: control.ink
-            border.width: control.tab ? 0 : control.framed || (control.hovered && !control.filled) ? Theme.border : 0
+            border.width: control.outlined ? Theme.hairline : 0
+            border.color: Theme.line
+            Behavior on color { ColorAnimation { duration: Theme.fast } }
+            // The top edge of a push button catches a little light.
+            Rectangle {
+                visible: control.primary; anchors.fill: parent; radius: parent.radius
+                gradient: Gradient { GradientStop { position: 0; color: "#1fffffff" } GradientStop { position: .6; color: "#00ffffff" } }
+            }
         }
-        // A tab says where you are with a rule under its label.
-        Rectangle {
-            visible: control.tab && control.active
-            anchors.bottom: parent.bottom; anchors.horizontalCenter: parent.horizontalCenter
-            width: parent.width-2*control.leftPadding+6; height: Theme.borderStrong; color: control.ink
-        }
-        // Keyboard focus: a solid ring standing off the button.
+        // Keyboard focus: a soft denim ring around the control.
         Rectangle {
             visible: control.visualFocus; anchors.fill: parent; anchors.margins: -3
-            color: "transparent"; border.color: control.ink; border.width: Theme.borderStrong
+            radius: Theme.radius+3; color: "transparent"; border.color: Theme.focusRing; border.width: 2; opacity: .75
         }
     }
     ToolTip.visible: hovered && hint.length>0
-    ToolTip.text: hint; ToolTip.delay: 550
+    ToolTip.text: hint; ToolTip.delay: 600
 }

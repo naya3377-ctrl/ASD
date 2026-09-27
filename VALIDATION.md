@@ -434,3 +434,17 @@ xref 손상·앞뒤 쓰레기 바이트, AES/RC4 암호와 권한 조합, 링크
 - `scripts/qa_design.py`로 시작·읽기·주석·작성·편집 화면(밝게/어둡게)과 설정·오류·결합 창을 찍어
   확인했고 QML 경고가 없다. Windows 실기기의 글꼴 표시(ClearType)는 확인하지 못했다.
   증거 화면: `docs/monochrome-start-0916.png`, `docs/monochrome-comments-0916.png`, `docs/monochrome-dark-0916.png`.
+
+
+# 윤DF 0.9.17 · 미리보기 앱 같은 디자인, 아메카지 색, 캐릭터 로고 · 2026-09-27
+
+- 화면 토큰(Theme.qml)을 아메카지 색(인디고 데님, 가죽 브라운, 황동, 올리브, 에크루)으로 바꾸고,
+  둥근 모서리와 부드러운 그림자, 짧은 이징 움직임을 넣었다. 그림자는 셰이더 없이 9분할 이미지
+  (`scripts/make_shadows.py`)라 소프트웨어 렌더러에서도 그려진다.
+- 새 부품: Segmented(흰 알약이 미끄러지는 분할 버튼), Shadow, 둥근 카드 Block.
+- 글꼴은 Pretendard 1.3.9 원본(Regular·SemiBold·Bold). Linux Qt는 세 굵기를 한 가족으로 묶는다.
+  Windows에서 SemiBold가 별도 가족으로 잡히면 600 요청은 가까운 굵기로 대체된다(미확인).
+- 캐릭터: `art/character`의 원본에서 `scripts/make_character.py`로 배경을 걷어 내고(바닥 그림자,
+  다리 사이 빈틈 포함) 털 가장자리의 흰 테두리를 지웠다. `scripts/make_logo.py`로 아이콘 8종과 ICO를 만든다.
+- `scripts/qa_design.py`로 시작·읽기·주석·작성·편집(밝게/어둡게), 설정·오류·결합·정보 창을 찍어 확인했다.
+  증거 화면: `docs/preview-start-0917.png`, `docs/preview-comments-0917.png`, `docs/preview-dark-0917.png`.

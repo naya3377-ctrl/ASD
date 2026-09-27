@@ -17,4 +17,6 @@ LegacyTextEditor 1.0 LegacyTextEditor.qml
 MergeDialog 1.0 MergeDialog.qml
 PresentationView 1.0 PresentationView.qml
 ScrollInput 1.0 ScrollInput.qml
+Segmented 1.0 Segmented.qml
+Shadow 1.0 Shadow.qml
 TextLayer 1.0 TextLayer.qml

@@ -18,24 +18,21 @@ ColumnLayout {
     }
     // The words this note will mark.
     RowLayout {
-        visible: !!form.draft.targetData.quote; Layout.fillWidth: true; spacing: 10
-        Rectangle { Layout.fillHeight: true; Layout.preferredWidth: Theme.borderStrong; color: Theme.ink }
+        visible: !!form.draft.targetData.quote; Layout.fillWidth: true; spacing: 9
+        Rectangle { Layout.fillHeight: true; Layout.preferredWidth: 3; radius: 1.5; color: Theme.leather; opacity: .75 }
         Text {
             Layout.fillWidth: true
             text: String(form.draft.targetData.quote || "").replace(/\s+/g, " ")
             wrapMode: Text.Wrap; maximumLineCount: 3; elide: Text.ElideRight
-            font.pixelSize: Theme.small; color: Theme.inkMuted; textFormat: Text.PlainText
+            font.pixelSize: Theme.small; color: Theme.inkSoft; textFormat: Text.PlainText
         }
     }
     TextField {
         id: author; objectName: "commentAuthor"; Layout.fillWidth: true
-        placeholderText: "작성자"; selectByMouse: true; font.pixelSize: Theme.small; color: Theme.ink; leftPadding: 2
-        placeholderTextColor: Theme.inkFaint; selectionColor: Theme.ink; selectedTextColor: Theme.surface
+        placeholderText: "작성자"; selectByMouse: true; font.pixelSize: Theme.small; color: Theme.ink; leftPadding: 9; implicitHeight: 28
+        placeholderTextColor: Theme.inkFaint; selectionColor: Theme.selection; selectedTextColor: Theme.ink
         enabled: !form.draft.controller.busy
-        background: Rectangle {
-            color: "transparent"
-            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: author.activeFocus ? Theme.borderStrong : Theme.hairline; color: author.activeFocus ? Theme.ink : Theme.lineSoft }
-        }
+        background: Rectangle { radius: Theme.radius; color: Theme.field; border.width: author.activeFocus ? 2 : Theme.hairline; border.color: author.activeFocus ? Theme.focusRing : Theme.line }
         onTextChanged: form.draft.author = text
     }
     ScrollView {
@@ -44,10 +41,10 @@ ColumnLayout {
             id: body; objectName: "commentBody"
             placeholderText: form.draft.mode === "reply" ? "답글을 입력하세요" : "메모를 입력하세요"
             wrapMode: TextEdit.Wrap; textFormat: TextEdit.PlainText; selectByMouse: true
-            font.pixelSize: Theme.lead-1; color: Theme.ink; enabled: !form.draft.controller.busy
-            placeholderTextColor: Theme.inkFaint; selectionColor: Theme.ink; selectedTextColor: Theme.surface
+            font.pixelSize: Theme.callout; color: Theme.ink; enabled: !form.draft.controller.busy
+            placeholderTextColor: Theme.inkFaint; selectionColor: Theme.selection; selectedTextColor: Theme.ink
             padding: 10
-            background: Rectangle { color: Theme.field; border.width: body.activeFocus ? Theme.borderStrong : Theme.border; border.color: Theme.ink }
+            background: Rectangle { radius: Theme.radius+1; color: Theme.field; border.width: body.activeFocus ? 2 : Theme.hairline; border.color: body.activeFocus ? Theme.focusRing : Theme.line }
             onTextChanged: form.draft.text = text
             Keys.onPressed: function(event) {
                 if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter) && (event.modifiers & Qt.ControlModifier)) { form.draft.apply(); event.accepted = true; }
@@ -55,20 +52,20 @@ ColumnLayout {
         }
     }
     RowLayout {
-        Layout.fillWidth: true; spacing: 6
+        Layout.fillWidth: true; spacing: 5
         Repeater {
             model: form.draft.mode === "reply" ? [] : form.colors
             delegate: Item {
                 required property string modelData
                 width: 20; height: 20
                 readonly property bool chosen: form.draft.selectedColor.toLowerCase() === modelData
-                Rectangle { anchors.centerIn: parent; width: 18; height: 18; color: "transparent"; border.color: Theme.ink; border.width: Theme.border; visible: parent.chosen }
-                Rectangle { anchors.centerIn: parent; width: 12; height: 12; color: parent.modelData; border.color: Theme.ink; border.width: Theme.hairline }
+                Rectangle { anchors.centerIn: parent; width: 20; height: 20; radius: 10; color: "transparent"; border.color: Theme.accent; border.width: 2; visible: parent.chosen }
+                Rectangle { anchors.centerIn: parent; width: 14; height: 14; radius: 7; color: parent.modelData; border.color: "#262a2420"; border.width: Theme.hairline }
                 MouseArea { anchors.fill: parent; enabled: !form.draft.controller.busy; cursorShape: Qt.PointingHandCursor; onClicked: form.draft.selectedColor = parent.modelData }
             }
         }
         Item { Layout.fillWidth: true }
-        ActionButton { objectName: "cancelComment"; compact: true; text: "취소"; hint: "작성 취소 · Esc"; enabled: !form.draft.controller.busy; onClicked: form.draft.close() }
+        ActionButton { objectName: "cancelComment"; compact: true; outlined: true; text: "취소"; hint: "작성 취소 · Esc"; enabled: !form.draft.controller.busy; onClicked: form.draft.close() }
         ActionButton { objectName: "applyComment"; compact: true; primary: true; text: form.draft.mode === "reply" ? "답글 추가" : "적용"; hint: "Ctrl+Enter"; enabled: form.draft.canApply; onClicked: form.draft.apply() }
     }
 }

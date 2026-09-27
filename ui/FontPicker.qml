@@ -11,13 +11,13 @@ Button {
     text: controller.fontOptions[currentIndex] ? controller.fontOptions[currentIndex].label : "글꼴 검색"
     implicitWidth: 260; implicitHeight: 36
     contentItem: Text { text: picker.text+"  ▾"; color: Theme.ink; verticalAlignment: Text.AlignVCenter; elide: Text.ElideRight; leftPadding: 10; rightPadding: 10; font.pixelSize: Theme.body }
-    background: Rectangle { color: picker.hovered ? Theme.hover : Theme.field; border.color: Theme.lineStrong; border.width: popup.visible ? Theme.borderStrong : Theme.border }
+    background: Rectangle { radius: Theme.radius; color: Theme.raised; border.color: popup.visible ? Theme.focusRing : Theme.line; border.width: popup.visible ? 2 : Theme.hairline }
     onClicked: {popup.open();fontSearch.forceActiveFocus();}
     Popup {
         id: popup; objectName: "fontSearchPopup"; y: picker.height+5
         width: Math.max(320,picker.width); height: Math.min(440, picker.Window.window.height-210)
         padding: 10; closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
-        background: Block { fill: Theme.surface }
+        background: Block { fill: Theme.raised; radius: Theme.radiusLarge; shadow: "medium" }
         ColumnLayout {
             anchors.fill: parent; spacing: 8
             TextField { id: fontSearch; objectName: "fontSearchInput"; Layout.fillWidth: true; placeholderText: "글꼴 이름 검색 · 한글 / 영문"; selectByMouse: true; onAccepted: {if(fontList.count){picker.controller.setFontChoice(fontList.model[fontList.currentIndex<0 ? 0 : fontList.currentIndex].key);popup.close();}} }

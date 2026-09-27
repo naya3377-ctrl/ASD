@@ -16,7 +16,7 @@ Rectangle {
     property var hoveredItem: null
     signal toolRequested(string tool)
     color: Theme.surface
-    Rectangle { width: Theme.hairline; height: parent.height; color: Theme.lineStrong; z: 5 }
+    Rectangle { width: Theme.hairline; height: parent.height; color: Theme.lineSoft; z: 5 }
 
     readonly property var selected: controller.selectedAnnotation
     readonly property string selectedKey: selected && selected.id ? selected.page + ":" + selected.id : ""
@@ -60,61 +60,66 @@ Rectangle {
         function onVisibleChanged() { if (panel.draft.visible && panel.draft.mode === "new") Qt.callLater(comments.positionViewAtBeginning); }
     }
 
-    // Header: the title set large over a heavy rule, the count in figures.
+    // Header: a quiet title with the count in a pill.
     Item {
-        id: header; width: parent.width; height: 78
+        id: header; width: parent.width; height: 56
         RowLayout {
-            anchors.fill: parent; anchors.leftMargin: 22; anchors.rightMargin: 12; anchors.topMargin: 6; spacing: 10
-            Text { text: "주석"; font.family: Theme.displayFamily; font.pixelSize: Theme.title+2; font.weight: Font.Bold; color: Theme.ink }
-            Text {
-                objectName: "commentCount"; Layout.alignment: Qt.AlignBaseline
-                text: String(panel.controller.annotations.length).padStart(2, "0")
-                font.family: Theme.monoFamily; font.pixelSize: Theme.small; color: Theme.inkMuted
+            anchors.fill: parent; anchors.leftMargin: 18; anchors.rightMargin: 10; spacing: 8
+            Text { text: "주석"; font.pixelSize: Theme.title3; font.weight: Font.Bold; color: Theme.ink }
+            Rectangle {
+                objectName: "commentCount"; radius: height/2; color: Theme.accentSoft
+                implicitWidth: Math.max(22, countText.implicitWidth+14); implicitHeight: 20
+                Text { id: countText; anchors.centerIn: parent; text: panel.controller.annotations.length; font.pixelSize: Theme.caption; font.weight: Font.Bold; font.features: ({ "tnum": 1 }); color: Theme.accentInk }
             }
             Item { Layout.fillWidth: true }
-            Rectangle {
-                visible: panel.controller.annotationsLoading; width: 8; height: 8; color: "transparent"; border.color: Theme.ink; border.width: Theme.border
-                RotationAnimation on rotation { running: panel.controller.annotationsLoading; from: 0; to: 90; duration: 400; loops: Animation.Infinite }
-            }
+            BusyIndicator { running: panel.controller.annotationsLoading; visible: running; implicitWidth: 18; implicitHeight: 18 }
             ActionButton { glyph: "close"; compact: true; hint: "주석 목록 닫기"; onClicked: panel.toolRequested("closeComments") }
         }
-        Rectangle { x: 22; anchors.bottom: parent.bottom; width: parent.width-22-16; height: Theme.rule; color: Theme.ink }
     }
     ColumnLayout {
-        anchors.fill: parent; anchors.leftMargin: 22; anchors.rightMargin: 16; anchors.topMargin: header.height+14; anchors.bottomMargin: 12; spacing: 12
-        // Tools and colour for new marks, one row.
+        anchors.fill: parent; anchors.leftMargin: 14; anchors.rightMargin: 12; anchors.topMargin: header.height; anchors.bottomMargin: 12; spacing: 10
+        // Tools and colour for new marks.
         RowLayout {
-            id: toolsRow; Layout.fillWidth: true; spacing: 2
-            ActionButton { objectName: "commentHighlightButton"; glyph: "highlight"; compact: true; hint: "형광펜 · 글자를 선택하거나 드래그"; active: panel.activeTool==="highlight"; enabled: panel.canMark; onClicked: panel.applyMarkup("highlight") }
-            ActionButton { objectName: "commentUnderlineButton"; glyph: "underline"; compact: true; hint: "밑줄"; active: panel.activeTool==="underline"; enabled: panel.canMark; onClicked: panel.applyMarkup("underline") }
-            ActionButton { objectName: "commentStrikeoutButton"; glyph: "strikeout"; compact: true; hint: "취소선"; active: panel.activeTool==="strikeout"; enabled: panel.canMark; onClicked: panel.applyMarkup("strikeout") }
-            ActionButton { objectName: "commentNoteButton"; glyph: "note"; compact: true; hint: "메모 · 선택한 글자에, 또는 페이지에서 위치 클릭"; active: panel.activeTool==="note"; enabled: panel.canMark; onClicked: panel.addNote() }
-            Item { Layout.fillWidth: true }
-            // Comment colours are the document's own data: the only colour here.
-            Repeater {
-                model: panel.colors
-                delegate: Item {
-                    required property string modelData
-                    Layout.preferredWidth: 20; Layout.preferredHeight: 20
-                    readonly property bool chosen: panel.controller.annotationColor===modelData
-                    Rectangle { anchors.centerIn: parent; width: 18; height: 18; color: "transparent"; border.color: Theme.ink; border.width: Theme.border; visible: parent.chosen }
-                    Rectangle { anchors.centerIn: parent; width: 12; height: 12; color: parent.modelData; border.color: Theme.ink; border.width: Theme.hairline }
-                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: panel.controller.setAnnotationColor(parent.modelData) }
+            id: toolsRow; Layout.fillWidth: true; spacing: 8
+            Rectangle {
+                radius: Theme.radius+1; color: Theme.well
+                implicitWidth: toolButtons.implicitWidth+4; implicitHeight: toolButtons.implicitHeight+4
+                Row {
+                    id: toolButtons; x: 2; y: 2; spacing: 1
+                    ActionButton { objectName: "commentHighlightButton"; glyph: "highlight"; compact: true; hint: "형광펜 · 글자를 선택하거나 드래그"; active: panel.activeTool==="highlight"; enabled: panel.canMark; onClicked: panel.applyMarkup("highlight") }
+                    ActionButton { objectName: "commentUnderlineButton"; glyph: "underline"; compact: true; hint: "밑줄"; active: panel.activeTool==="underline"; enabled: panel.canMark; onClicked: panel.applyMarkup("underline") }
+                    ActionButton { objectName: "commentStrikeoutButton"; glyph: "strikeout"; compact: true; hint: "취소선"; active: panel.activeTool==="strikeout"; enabled: panel.canMark; onClicked: panel.applyMarkup("strikeout") }
+                    ActionButton { objectName: "commentNoteButton"; glyph: "note"; compact: true; hint: "메모 · 선택한 글자에, 또는 페이지에서 위치 클릭"; active: panel.activeTool==="note"; enabled: panel.canMark; onClicked: panel.addNote() }
                 }
             }
-            Rectangle { Layout.preferredWidth: Theme.hairline; Layout.preferredHeight: 18; Layout.leftMargin: 6; Layout.rightMargin: 4; color: Theme.lineSoft }
+            Item { Layout.fillWidth: true }
+            // Colour wells for new marks: these are the colours saved in the PDF.
+            Row {
+                spacing: 5
+                Repeater {
+                    model: panel.colors
+                    delegate: Item {
+                        required property string modelData
+                        width: 20; height: 20
+                        readonly property bool chosen: panel.controller.annotationColor===modelData
+                        Rectangle { anchors.centerIn: parent; width: 20; height: 20; radius: 10; color: "transparent"; border.color: Theme.accent; border.width: 2; visible: parent.chosen }
+                        Rectangle { anchors.centerIn: parent; width: 14; height: 14; radius: 7; color: parent.modelData; border.color: "#262a2420"; border.width: Theme.hairline }
+                        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: panel.controller.setAnnotationColor(parent.modelData) }
+                    }
+                }
+            }
             ActionButton { glyph: "undo"; compact: true; hint: "실행 취소 · Ctrl+Z"; enabled: panel.canMark && panel.controller.document.canUndo; onClicked: panel.controller.undo() }
         }
         RowLayout {
-            Layout.fillWidth: true; spacing: 10
-            Text { text: "작성자"; font.family: Theme.monoFamily; font.pixelSize: Theme.label; font.letterSpacing: Theme.labelSpacing; color: Theme.inkMuted }
+            Layout.fillWidth: true; spacing: 8
+            Text { text: "작성자"; font.pixelSize: Theme.small; font.weight: Font.DemiBold; color: Theme.inkMuted }
             TextField {
                 id: authorInput; objectName: "annotationAuthorInput"; Layout.fillWidth: true; text: panel.controller.annotationAuthor
-                placeholderText: "이름"; selectByMouse: true; font.pixelSize: Theme.body; color: Theme.ink; implicitHeight: 30
-                leftPadding: 2; placeholderTextColor: Theme.inkFaint; selectionColor: Theme.ink; selectedTextColor: Theme.surface
+                placeholderText: "이름"; selectByMouse: true; font.pixelSize: Theme.body; color: Theme.ink; implicitHeight: 28
+                leftPadding: 9; placeholderTextColor: Theme.inkFaint; selectionColor: Theme.selection; selectedTextColor: Theme.ink
                 background: Rectangle {
-                    color: "transparent"
-                    Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: authorInput.activeFocus ? Theme.borderStrong : Theme.hairline; color: authorInput.activeFocus ? Theme.ink : Theme.lineSoft }
+                    radius: Theme.radius; color: Theme.field; border.width: authorInput.activeFocus ? 2 : Theme.hairline
+                    border.color: authorInput.activeFocus ? Theme.focusRing : Theme.line
                 }
                 onEditingFinished: panel.controller.setAnnotationAuthor(text)
             }
@@ -122,45 +127,50 @@ Rectangle {
 
         ListView {
             id: comments; objectName: "commentsList"
-            Layout.fillWidth: true; Layout.fillHeight: true; Layout.topMargin: 4; clip: true
-            model: panel.controller.annotations; spacing: 0
+            Layout.fillWidth: true; Layout.fillHeight: true; Layout.topMargin: 2; clip: true
+            model: panel.controller.annotations; spacing: 8
+            topMargin: 4; bottomMargin: 10; leftMargin: 2; rightMargin: 2
             ScrollBar.vertical: AppScrollBar { }
             // A new note is written at the top of the list.
             header: Loader {
-                width: comments.width
+                width: comments.width-4
                 active: panel.draft.visible && panel.draft.mode === "new"
-                height: active && item ? item.implicitHeight + 18 : 0
-                sourceComponent: Block {
-                    width: comments.width-8; implicitHeight: newForm.implicitHeight + 34
-                    Rectangle { width: parent.width; height: Theme.borderStrong+1; color: Theme.ink }
-                    CommentForm { id: newForm; draft: panel.draft; anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 16; anchors.topMargin: 20 }
+                height: active && item ? item.implicitHeight : 0
+                sourceComponent: Item {
+                    implicitHeight: newForm.implicitHeight + 28 + 14   // the card, then a gap before the list
+                    Block {
+                        width: parent.width; height: parent.height - 14
+                        shadow: "medium"; outline: Theme.accent; outlineWidth: 1.5
+                        CommentForm { id: newForm; draft: panel.draft; anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 14 }
+                    }
                 }
             }
             delegate: Column {
               id: entry; required property var modelData; required property int index
-              width: comments.width-8; spacing: 0
-              // Page heading above the first card of each page: figures and a hairline.
+              width: comments.width-4; spacing: 0
+              // Page heading above the first card of each page.
               Item {
                   visible: entry.index===0 || panel.controller.annotations[entry.index-1].page!==entry.modelData.page
-                  width: entry.width; height: pageLabel.implicitHeight+(entry.index>0 ? 26 : 8)
+                  width: entry.width; height: pageLabel.implicitHeight+(entry.index>0 ? 16 : 4)
                   Text {
-                      id: pageLabel; anchors.bottom: parent.bottom; anchors.bottomMargin: 6
-                      text: "p. " + (entry.modelData.page+1); font.family: Theme.monoFamily; font.pixelSize: Theme.label; font.letterSpacing: Theme.labelSpacing; color: Theme.ink
+                      id: pageLabel; anchors.bottom: parent.bottom; anchors.bottomMargin: 6; x: 4
+                      text: (entry.modelData.page+1) + "쪽"; font.pixelSize: Theme.small; font.weight: Font.DemiBold; color: Theme.inkMuted
                   }
-                  Rectangle { anchors.left: pageLabel.right; anchors.leftMargin: 10; anchors.right: parent.right; anchors.verticalCenter: pageLabel.verticalCenter; height: Theme.hairline; color: Theme.ink }
               }
-              Rectangle {
+              Item {
                 id: card; readonly property var modelData: entry.modelData; readonly property int index: entry.index
                 objectName: "commentCard"+index
                 readonly property bool selected: panel.selected.id===modelData.id && panel.selected.page===modelData.page
                 readonly property bool drafting: panel.draft.belongsTo(modelData)
-                x: Math.min(modelData.depth,2)*18; width: entry.width-x
-                height: cardLayout.implicitHeight+28
-                // Selected: framed in ink with a solid rule on the left. Hover: a quiet grey.
-                color: cardHover.hovered && !selected ? Theme.hover : Theme.surface
-                border.color: selected ? Theme.ink : "transparent"; border.width: Theme.border
-                Rectangle { visible: card.selected; width: Theme.rule; height: parent.height; color: Theme.ink }
-                Rectangle { visible: !card.selected; anchors.bottom: parent.bottom; width: parent.width; height: Theme.hairline; color: Theme.lineSoft }
+                x: Math.min(modelData.depth,2)*16; width: entry.width-x
+                height: cardLayout.implicitHeight+26
+                // Replies hang from a thin thread on the left.
+                Rectangle { visible: !!card.modelData.reply; x: -9; y: -6; width: 2; height: 22; radius: 1; color: Theme.line }
+                Block {
+                    anchors.fill: parent; shadow: card.selected ? "medium" : "small"
+                    fill: cardHover.hovered && !card.selected ? Qt.darker(Theme.raised, Theme.dark ? .92 : 1.012) : Theme.raised
+                    outline: card.selected ? Theme.accent : Theme.lineSoft; outlineWidth: card.selected ? 1.5 : Theme.hairline
+                }
                 HoverHandler { id: cardHover; onHoveredChanged: panel.hoveredItem = hovered ? card.modelData : (panel.hoveredItem === card.modelData ? null : panel.hoveredItem) }
                 TapHandler {
                     enabled: !card.drafting
@@ -169,36 +179,36 @@ Rectangle {
                 }
                 ColumnLayout {
                     id: cardLayout; anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
-                    anchors.leftMargin: card.selected ? 18 : 14; anchors.rightMargin: 14; anchors.topMargin: 14; spacing: 7
+                    anchors.leftMargin: 14; anchors.rightMargin: 12; anchors.topMargin: 12; spacing: 6
                     RowLayout {
-                        Layout.fillWidth: true; spacing: 8
-                        // The mark's own colour, as a small square.
-                        Rectangle { visible: !card.modelData.reply; width: 9; height: 9; color: card.modelData.color || Theme.inkFaint; border.color: Theme.ink; border.width: Theme.hairline }
-                        Text { text: card.modelData.reply ? "↳ 답글" : card.modelData.label; font.family: Theme.monoFamily; font.pixelSize: Theme.label-1; font.letterSpacing: Theme.labelSpacing; color: Theme.inkMuted; textFormat: Text.PlainText }
-                        Text { text: card.modelData.author || "작성자 없음"; Layout.fillWidth: true; elide: Text.ElideRight; font.pixelSize: Theme.body; font.weight: Font.Bold; color: Theme.ink; textFormat: Text.PlainText }
+                        Layout.fillWidth: true; spacing: 7
+                        // The mark's own colour, as a small dot.
+                        Rectangle { visible: !card.modelData.reply; width: 9; height: 9; radius: 4.5; color: card.modelData.color || Theme.inkFaint; border.color: "#332a2420"; border.width: Theme.hairline }
+                        Text { text: card.modelData.author || "작성자 없음"; Layout.fillWidth: true; elide: Text.ElideRight; font.pixelSize: Theme.body; font.weight: Font.DemiBold; color: Theme.ink; textFormat: Text.PlainText }
                         Text {
-                            visible: !!card.modelData.created; font.family: Theme.monoFamily; font.pixelSize: Theme.label-1; color: Theme.inkFaint; textFormat: Text.PlainText
+                            visible: !!card.modelData.created; font.pixelSize: Theme.caption; font.features: ({ "tnum": 1 }); color: Theme.inkFaint; textFormat: Text.PlainText
                             text: card.modelData.created.slice(0,2)==="D:" ? card.modelData.created.slice(2,6)+"."+card.modelData.created.slice(6,8)+"."+card.modelData.created.slice(8,10) : card.modelData.created
                         }
                     }
-                    // The marked words, set off by a rule like a quotation.
+                    Text { text: card.modelData.reply ? "답글" : card.modelData.label; font.pixelSize: Theme.caption; color: Theme.inkMuted; textFormat: Text.PlainText; Layout.topMargin: -3 }
+                    // The marked words, set off by a leather-brown rule like a quotation.
                     RowLayout {
-                        visible: !!card.modelData.quote && !card.modelData.reply; Layout.fillWidth: true; spacing: 10
-                        Rectangle { Layout.fillHeight: true; Layout.preferredWidth: Theme.borderStrong; color: Theme.ink }
+                        visible: !!card.modelData.quote && !card.modelData.reply; Layout.fillWidth: true; spacing: 9
+                        Rectangle { Layout.fillHeight: true; Layout.preferredWidth: 3; radius: 1.5; color: Theme.leather; opacity: .75 }
                         Text {
                             Layout.fillWidth: true
                             text: card.modelData.quote.replace(/\s+/g," "); wrapMode: Text.Wrap
                             maximumLineCount: card.selected ? 4 : 2; elide: Text.ElideRight
-                            font.pixelSize: Theme.small; lineHeight: 1.2; color: Theme.inkMuted; textFormat: Text.PlainText
+                            font.pixelSize: Theme.small; lineHeight: 1.25; color: Theme.inkSoft; textFormat: Text.PlainText
                         }
                     }
                     Text {
                         visible: !card.drafting || panel.draft.mode === "reply"; Layout.fillWidth: true
                         text: card.modelData.content || (card.modelData.state ? "검토 상태: "+card.modelData.state : card.modelData.quote ? "" : "내용 없는 주석")
                         wrapMode: Text.Wrap; maximumLineCount: card.selected ? 8 : 3; elide: Text.ElideRight
-                        font.pixelSize: Theme.lead-1; lineHeight: 1.3; color: card.modelData.content ? Theme.ink : Theme.inkFaint; textFormat: Text.PlainText
+                        font.pixelSize: Theme.callout; lineHeight: 1.3; color: card.modelData.content ? Theme.ink : Theme.inkFaint; textFormat: Text.PlainText
                     }
-                    Text { visible: !card.modelData.editable && card.selected; Layout.fillWidth: true; text: "읽기 전용 · 원본 주석 보존"; font.family: Theme.monoFamily; font.pixelSize: Theme.label-1; color: Theme.inkFaint }
+                    Text { visible: !card.modelData.editable && card.selected; Layout.fillWidth: true; text: "읽기 전용 · 원본 주석 보존"; font.pixelSize: Theme.caption; color: Theme.inkFaint }
                     RowLayout {
                         visible: card.selected && card.modelData.editable && !card.drafting; spacing: 6; Layout.topMargin: 4
                         ActionButton { objectName: "editComment"+card.index; compact: true; outlined: true; text: "수정"; enabled: panel.allowActions && panel.controller.canAnnotate; onClicked: { panel.settleDraft(); panel.controller.editSelectedAnnotation("edit"); } }
@@ -213,15 +223,15 @@ Rectangle {
                 }
               }
             }
+            // Nothing yet: the character waits for the first note.
             Column {
                 visible: !comments.count && !panel.controller.annotationsLoading && !panel.draft.visible
-                anchors.centerIn: parent; width: parent.width-24; spacing: 14
-                BrandMark { anchors.horizontalCenter: parent.horizontalCenter; size: 40 }
-                Text { width: parent.width; horizontalAlignment: Text.AlignHCenter; text: "아직 주석이 없어요"; font.family: Theme.displayFamily; font.pixelSize: Theme.lead+3; font.weight: Font.Bold; color: Theme.ink }
-                Text { width: parent.width; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.WordWrap; text: "글자를 드래그한 뒤 형광펜이나 메모를 누르세요. 선택 없이 메모를 누르면 페이지에서 자리를 고를 수 있어요."; font.pixelSize: Theme.small; lineHeight: 1.4; color: Theme.inkMuted }
+                anchors.centerIn: parent; width: parent.width-28; spacing: 10
+                Image { objectName: "commentsEmptyCharacter"; anchors.horizontalCenter: parent.horizontalCenter; source: "../assets/character/face.png"; width: 118; height: width*sourceSize.height/Math.max(1,sourceSize.width); smooth: true; mipmap: true }
+                Text { width: parent.width; horizontalAlignment: Text.AlignHCenter; text: "아직 주석이 없어요"; font.pixelSize: Theme.headline; font.weight: Font.Bold; color: Theme.ink }
+                Text { width: parent.width; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.WordWrap; text: "글자를 드래그한 뒤 형광펜이나 메모를 눌러 보세요. 선택 없이 메모를 누르면 페이지에서 자리를 고를 수 있어요."; font.pixelSize: Theme.small; lineHeight: 1.35; color: Theme.inkMuted }
             }
         }
-        Rectangle { Layout.fillWidth: true; height: Theme.hairline; color: Theme.lineSoft }
-        Text { Layout.fillWidth: true; text: "카드를 누르면 그 위치로 이동해요 · 주석은 저장하면 PDF에 함께 남아요"; wrapMode: Text.WordWrap; font.pixelSize: Theme.label; lineHeight: 1.3; color: Theme.inkMuted }
+        Text { Layout.fillWidth: true; text: "카드를 누르면 그 위치로 이동해요 · 주석은 저장하면 PDF에 함께 남아요"; wrapMode: Text.WordWrap; font.pixelSize: Theme.caption; lineHeight: 1.3; color: Theme.inkFaint }
     }
 }

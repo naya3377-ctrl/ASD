@@ -19,7 +19,7 @@ Item {
     width: Math.max(8,(editData.mode==="replace" ? editData.rect[2]-editData.rect[0] : rect[2]-rect[0])*factor)
     height: Math.max(8,session.areaHeight*factor)
     rotation: angle; transformOrigin: Item.TopLeft
-    Rectangle { anchors.fill: parent; color: "white"; border.color: Theme.pageMark; border.width: 2 }
+    Rectangle { anchors.fill: parent; color: "white"; border.color: Theme.pageMark; border.width: 2; radius: 3 }
     TextArea {
         id: input; objectName: editor.editing ? "replacementText" : "inactiveInlineText"+pageNumber
         anchors.fill: parent; padding: 0; leftPadding: 1; rightPadding: 1
