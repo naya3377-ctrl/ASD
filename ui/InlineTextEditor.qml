@@ -50,7 +50,7 @@ Item {
         onTextChanged: if(editor.editing && bound) session.text=getText(0,length)
         Connections { target: editor.session; function onVisibleChanged(){input.bound=false;if(editor.editing)Qt.callLater(editor.attach);} }
     }
-    Rectangle { anchors.fill: parent; color: "transparent"; border.color: live.ready ? Theme.pageMark : "#a99c8a"; border.width: 1.5/editor.factor; radius: 2/editor.factor }
+    Rectangle { anchors.fill: parent; color: "transparent"; border.color: live.ready ? Theme.pageMark : "#9a9ea4"; border.width: 1.5/editor.factor; radius: 2/editor.factor }
     Rectangle {
         visible: live.ready; width: 8/editor.factor; height: 22/editor.factor
         x: parent.width-width/2; y: parent.height/2-height/2

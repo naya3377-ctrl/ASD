@@ -23,9 +23,10 @@ Qt license texts; distribution metadata and Python LICENSE.txt are preserved.
 
 The sample PDF is created by this project. Its embedded fonts come from
 MuPDF's built-in font resources; their upstream notices remain applicable.
-The 윤DF character art (art/character, provided by the project owner for this
-application) and the logo and icons made from it by scripts/make_character.py and
-scripts/make_logo.py belong to the project.
+The 윤DF Y mark (art/logo, provided by the project owner for this application)
+and the vector logo and icons redrawn from it by scripts/make_logo.py belong to
+the project, as does the character art in art/character (not shipped in the
+application since 0.9.19).
 
 When distributing a compiled binary, provide corresponding application source
 and build scripts, include the license notices of the bundled runtime and
@@ -45,7 +46,7 @@ This source preview is not automatically published to a public repository.
   The full data license is installed in tessdata/LICENSE.
 - fontTools 4.61.1 source and MIT license: https://github.com/fonttools/fonttools/tree/4.61.1
   Its full license is preserved in runtime/packages/fonttools-4.61.1.dist-info/licenses/LICENSE.
-- Pretendard 1.3.9 (Regular, SemiBold, Bold), SIL Open Font License 1.1,
+- Pretendard 1.3.9 (Regular, Medium, SemiBold, Bold), SIL Open Font License 1.1,
   Copyright (c) 2021 Kil Hyung-jin, with Reserved Font Name 'Pretendard'
   (https://github.com/orioncactus/pretendard). Unmodified static OTF files;
   the license is installed in assets/fonts/OFL-Pretendard.txt.

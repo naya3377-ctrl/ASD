@@ -1,6 +1,8 @@
 """Screens of the Preview-style amekaji design, in light and dark, with the bundled font.
 
 Saves test-output/design-*.png for review and fails on QML warnings.
+QA_SIZE=WIDTHxHEIGHT sets the window (default 1320x900, the app's own) and
+QA_PREFIX names the files (default "design"), e.g. for before/after pairs.
 SPDX-License-Identifier: AGPL-3.0-or-later
 """
 import os
@@ -70,13 +72,16 @@ def main():
     ctx.setContextProperty('library',library.object);ctx.setContextProperty('iconTint',True)
     engine.load(QUrl.fromLocalFile(str(root/'ui/Main.qml')))
     assert engine.rootObjects(),warnings
-    w=engine.rootObjects()[0];w.setProperty('width',1440);w.setProperty('height',900)
+    w=engine.rootObjects()[0]
+    size=[int(v) for v in os.environ.get('QA_SIZE','1320x900').split('x')];prefix=os.environ.get('QA_PREFIX','design')
+    w.setProperty('width',size[0]);w.setProperty('height',size[1])
     def wait(predicate,timeout=30):
         started=time.monotonic()
         while not predicate():
             app.processEvents();QTest.qWait(20)
             if time.monotonic()-started>timeout:raise AssertionError(('timeout',warnings[-6:]))
         app.processEvents();QTest.qWait(120)
+    def root_intro(): return bool(w.property('introPlayed'))
     def item(name):
         x=w.findChild(QObject,name)
         if x:return x
@@ -90,19 +95,19 @@ def main():
         x=item(name);pos=x.mapToScene(x.boundingRect().center())
         QTest.mouseClick(w,Qt.LeftButton,Qt.NoModifier,pos.toPoint());QTest.qWait(120)
     def shot(name):
-        app.processEvents();QTest.qWait(250);w.grabWindow().save(str(out/f'design-{name}.png'))
+        # The pointer rests on the status bar so no tooltip covers the screen.
+        from PySide6.QtCore import QPoint
+        QTest.mouseMove(w,QPoint(int(w.property('width'))//2,int(w.property('height'))-12))
+        app.processEvents();QTest.qWait(250);w.grabWindow().save(str(out/f'{prefix}-{name}.png'))
     try:
         for theme in ('light','dark'):
             documents.activeBridge.setThemeMode(theme);QTest.qWait(100)
             if theme=='light':
-                # The character waves hello on its own, settles, and waves again when clicked.
-                hello=item('startCharacter')
-                wait(lambda:not hello.property('playing'),timeout=10)
-                assert hello.property('armAngle')==0 and hello.property('hop')==0,'character did not settle'
+                # The Y mark fades in once (360 ms) on the empty start window.
+                logo=item('startLogo')
+                wait(lambda:root_intro(),timeout=5)
+                assert abs(logo.property('opacity')-1)<1e-6 and abs(logo.property('scale')-1)<1e-6,'start mark did not settle'
                 shot('start')
-                click('startCharacter');assert hello.property('playing'),'click did not wave'
-                QTest.qWait(700);shot('start-wave')
-                wait(lambda:not hello.property('playing'),timeout=10)
             if not documents.activeBridge.document.get('count'):
                 documents.openPaths([str(report)]);c=documents.activeBridge
                 wait(lambda:c.document.get('count')==6 and c.imageUrl(0,'main') and c.textLayout(0)['chars'])
@@ -119,6 +124,16 @@ def main():
             click('cancelComment');wait(lambda:not item('annotationEditor').property('visible'))
             click('editModeButton');QTest.qWait(300)
             shot(f'edit-{theme}')
+            # Body-text editing: the tools float beside the paragraph, never over it.
+            c.loadBlocks(0);wait(lambda:c.blocksAt(0))
+            block=[x for x in c.blocksAt(0) if '3' in x['text']][0]
+            c.editBlock(block);wait(lambda:not c.liveEditor.loading and item('inlineEditBar').property('visible'))
+            bar=item('inlineEditBar');rect=bar.property('anchorRect')
+            if hasattr(rect,'toVariant'): rect=rect.toVariant()
+            top,bottom=bar.property('y'),bar.property('y')+bar.property('height')
+            assert bottom<=rect['y'] or top>=rect['y']+rect['h'],('edit tools cover the paragraph',top,bottom,rect)
+            shot(f'inline-edit-{theme}')
+            click('cancelTextButton');wait(lambda:not item('inlineEditBar').property('visible'))
         documents.activeBridge.setThemeMode('light');QTest.qWait(100)
         click('readModeButton')
         item('settingsDialog').open();shot('settings');item('settingsDialog').close()
@@ -131,9 +146,9 @@ def main():
         from PySide6.QtCore import QMetaObject
         QMetaObject.invokeMethod(item('aboutDialog'),'open')
         QTest.qWait(400);shot('about')
-        assert item('aboutCharacter').property('visible')
+        assert item('aboutLogo').property('visible')
         assert not warnings,warnings
-        print('PASS: design screens saved to test-output/design-*.png; the start character waves and settles; bundled fonts loaded; no QML warnings',flush=True)
+        print('PASS: design screens saved to test-output/design-*.png; the start mark fades in once; bundled fonts loaded; no QML warnings',flush=True)
     finally:
         active=documents.activeBridge;active.setAutomaticOcr(saved[0]);active.setAnnotationAuthor(saved[1]);active.setThemeMode(saved[2])
         w.setVisible(False);documents.shutdown();del engine;qInstallMessageHandler(None)

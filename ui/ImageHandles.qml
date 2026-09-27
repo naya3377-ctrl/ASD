@@ -23,11 +23,11 @@ Item {
         enabled: imageLayer.editing && imageLayer.chosenItem!==null && !imageMenu.visible
         onActivated: imageLayer.remove(imageLayer.chosenItem)
     }
-    Menu {
+    AppMenu {
         id: imageMenu; objectName: "imageMenu"
         property var item: null
-        MenuItem { objectName: "deleteImageItem"; text: "이미지 삭제"; onTriggered: imageLayer.remove(imageMenu.item) }
-        MenuItem { text: "닫기"; onTriggered: imageMenu.close() }
+        AppMenuItem { objectName: "deleteImageItem"; text: "이미지 삭제"; onTriggered: imageLayer.remove(imageMenu.item) }
+        AppMenuItem { text: "닫기"; onTriggered: imageMenu.close() }
     }
     Repeater {
         model: imageLayer.editing ? imageLayer.objects : []
@@ -68,8 +68,8 @@ Item {
                 objectName: "imageDelete"+box.modelData.id
                 visible: box.chosen && !box.moving; width: 22; height: 22; radius: 11
                 x: parent.width-width/2; y: -height/2
-                color: deleteArea.containsMouse ? "#9a3b2e" : "white"; border.color: deleteArea.containsMouse ? "#9a3b2e" : Theme.pageMark; border.width: 1.5
-                Text { anchors.centerIn: parent; text: "✕"; font.pixelSize: 11; font.bold: true; color: deleteArea.containsMouse ? "white" : "#9a3b2e" }
+                color: deleteArea.containsMouse ? "#a8322a" : "white"; border.color: deleteArea.containsMouse ? "#a8322a" : Theme.pageMark; border.width: 1.5
+                Text { anchors.centerIn: parent; text: "✕"; font.pixelSize: 11; font.bold: true; color: deleteArea.containsMouse ? "white" : "#a8322a" }
                 MouseArea {
                     id: deleteArea; anchors.fill: parent; anchors.margins: -3; hoverEnabled: true; enabled: !controller.busy
                     cursorShape: Qt.PointingHandCursor; onClicked: imageLayer.remove(box.modelData)

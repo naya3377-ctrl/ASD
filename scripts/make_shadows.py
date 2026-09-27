@@ -13,9 +13,10 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFilter
 
 ROOT = Path(__file__).resolve().parent.parent
-# level: (margin, corner radius, blur, opacity); a warm near-black like the character's fur
-LEVELS = {"small": (8, 6, 3, .20), "medium": (16, 10, 7, .17), "large": (36, 12, 16, .26), "page": (14, 0, 5, .22)}
-INK = (38, 28, 20)
+# level: (margin, corner radius, blur, opacity) in the interface's ink charcoal.
+# Kept faint: shadows only separate the page and popups from what is behind.
+LEVELS = {"small": (6, 6, 2, .10), "medium": (14, 10, 6, .13), "large": (28, 12, 11, .16), "page": (12, 0, 4, .13)}
+INK = (41, 49, 58)
 
 
 def main():

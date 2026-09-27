@@ -1,14 +1,16 @@
-"""Prepare the 윤DF character art for the interface.
+"""Cut out the 윤DF character art (0.9.17–0.9.18 interface; since 0.9.19 the
+interface uses the Y mark and ships none of these images).
 
 From art/character/standing.webp (the character on white paper) this cuts the
 character out, clears the floor shadow and the pocket between the legs,
-takes the white paper out of the fur's soft edge, and writes:
-  assets/character/standing.png   the whole character, transparent
-  assets/character/face.png       head and bow tie, for small places
-  assets/character/wave-body.png, wave-forearm.png
-                                  the figure split at the right elbow, so the
-                                  forearm can turn up and wave (ui/WavingCharacter.qml)
-From art/character/jumping.webp it writes assets/character/jumping.jpg.
+takes the white paper out of the fur's soft edge, and writes to
+art/character/cutout/:
+  standing.png   the whole character, transparent
+  face.png       head and bow tie, for small places
+  wave-body.png, wave-forearm.png
+                 the figure split at the right elbow, so the forearm can
+                 turn up and wave (the 0.9.18 start screen)
+From art/character/jumping.webp it writes jumping.jpg.
 
 Needs Pillow and NumPy (tools only; the app does not use them).
 Usage: python scripts/make_character.py
@@ -21,7 +23,7 @@ from PIL import Image, ImageDraw, ImageFilter
 
 ROOT = Path(__file__).resolve().parent.parent
 ART = ROOT / "art" / "character"
-OUT = ROOT / "assets" / "character"
+OUT = ROOT / "art" / "character" / "cutout"
 
 
 def flood(passable, seeds):

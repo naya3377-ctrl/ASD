@@ -1,8 +1,12 @@
 singleton Theme 1.0 Theme.qml
 ActionButton 1.0 ActionButton.qml
 AnnotationEditor 1.0 AnnotationEditor.qml
+AppCheckBox 1.0 AppCheckBox.qml
 AppComboBox 1.0 AppComboBox.qml
 AppDialog 1.0 AppDialog.qml
+AppMenu 1.0 AppMenu.qml
+AppMenuItem 1.0 AppMenuItem.qml
+AppMenuSeparator 1.0 AppMenuSeparator.qml
 AppScrollBar 1.0 AppScrollBar.qml
 AppSlider 1.0 AppSlider.qml
 Block 1.0 Block.qml
@@ -19,5 +23,5 @@ PresentationView 1.0 PresentationView.qml
 ScrollInput 1.0 ScrollInput.qml
 Segmented 1.0 Segmented.qml
 Shadow 1.0 Shadow.qml
+SidePanel 1.0 SidePanel.qml
 TextLayer 1.0 TextLayer.qml
-WavingCharacter 1.0 WavingCharacter.qml

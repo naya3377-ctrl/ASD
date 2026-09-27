@@ -1,121 +1,136 @@
-"""Draw the 윤DF application icon from the character.
+"""Draw the 윤DF mark: an ink-charcoal Y on a plain white rounded tile.
 
-A rounded square (the continuous corner of macOS icons) of indigo denim,
-faintly twilled, with tan contrast stitching like a pair of jeans; the
-character's head and bow tie stand in front and run off the bottom edge.
-Small sizes (32 px and below) drop the stitching and show the face larger,
-so it still reads in a taskbar.
+The Y follows the refined logo (art/logo/YoonDF-Refined-Logo.png): two
+arms with flat tops meeting in a sharp notch, a straight stem, softly
+rounded ends. It is drawn here as a vector path so every size is crisp;
+the tile keeps a hairline edge so it still reads on a white taskbar or
+window. Pixel sizes get an edge exactly one device pixel wide.
 
-Writes assets/icon/<size>.png and assets/icon.ico.
-Needs Pillow and NumPy (tools only; the app does not use them).
+Writes assets/logo/mark.svg (the tile and Y, for the interface),
+assets/icon/<size>.png and assets/icon.ico.
+Needs PySide6 only.
 Usage: python scripts/make_logo.py
 SPDX-License-Identifier: AGPL-3.0-or-later
 """
-from pathlib import Path
-import io
 import math
+import os
 import struct
-import sys
-import numpy as np
-from PIL import Image, ImageDraw, ImageFilter
+from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from make_character import ART, cut_out
-
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 ROOT = Path(__file__).resolve().parent.parent
-S = 1024
-DENIM_TOP, DENIM_BOTTOM = (64, 94, 146), (33, 55, 96)
-STITCH = (214, 160, 92)
+INK = "#29313A"          # the Y, and the interface's primary ink
+TILE = "#FFFFFF"
+EDGE = "#D9DCE0"
+BOX = 1024               # viewBox edge
+MARGIN = 0.035           # space around the tile, as a share of the box
+CORNER = 0.22            # tile corner radius, as a share of the tile edge
 SIZES = (16, 20, 24, 32, 40, 48, 64, 128, 256, 512)
+ICO_SIZES = (16, 20, 24, 32, 40, 48, 64, 128, 256)
 
 
-def squircle(size, inset=0.0, n=5.0, steps=1440):
-    c, r = size / 2, size / 2 - inset
-    points = []
-    for i in range(steps):
-        t = 2 * math.pi * i / steps
-        ct, st = math.cos(t), math.sin(t)
-        points.append((c + r * math.copysign(abs(ct) ** (2 / n), ct), c + r * math.copysign(abs(st) ** (2 / n), st)))
-    return points
+def fillet_path(points, radii):
+    """A closed SVG path through `points` with each corner rounded by the
+    matching radius (a circular fillet tangent to both edges)."""
+    parts = []
+    n = len(points)
+    for i in range(n):
+        (px, py), (x, y), (nx, ny) = points[i - 1], points[i], points[(i + 1) % n]
+        r = radii[i]
+        ax, ay, bx, by = px - x, py - y, nx - x, ny - y
+        la, lb = math.hypot(ax, ay), math.hypot(bx, by)
+        ax, ay, bx, by = ax / la, ay / la, bx / lb, by / lb
+        angle = math.acos(max(-1.0, min(1.0, ax * bx + ay * by)))
+        d = min(r / math.tan(angle / 2) if r else 0, la / 2, lb / 2)
+        start, end = (x + ax * d, y + ay * d), (x + bx * d, y + by * d)
+        cross = ax * by - ay * bx
+        rr = d * math.tan(angle / 2)
+        sweep = 0 if cross > 0 else 1
+        parts.append(("M" if i == 0 else "L") + f"{start[0]:.2f},{start[1]:.2f}")
+        if d > 0:
+            parts.append(f"A{rr:.2f},{rr:.2f} 0 0 {sweep} {end[0]:.2f},{end[1]:.2f}")
+    return " ".join(parts) + " Z"
 
 
-def gradient(top, bottom):
-    g = np.linspace(0, 1, S)[:, None, None]
-    rows = np.array(top)[None, None, :] * (1 - g) + np.array(bottom)[None, None, :] * g
-    return Image.fromarray(np.repeat(rows, S, axis=1).astype(np.uint8), "RGB").convert("RGBA")
+def y_path(left, top, width):
+    """The Y in a box `width` wide whose top-left is (left, top). Proportions
+    are measured from the refined logo: arm slope 0.72, arm and stem about
+    0.27 of the width, the notch at 0.33 of the height."""
+    s = width / 744.0            # the measured Y is 744 units wide, 653 tall
+    cx = 372.0
+    def p(x, y): return (left + x * s, top + y * s)
+    outer = lambda y: .713 * y                 # left arm, outside edge
+    inner = lambda y: 211.8 + .743 * y         # left arm, inside edge
+    notch = (cx - 211.8) / .743                # where the two inside edges meet
+    half = 96.5                                # half the stem
+    joint = (cx - half) / .713                 # outside edge meets the stem
+    points = [p(outer(0), 0), p(inner(0), 0), p(cx, notch), p(2 * cx - inner(0), 0),
+              p(2 * cx - outer(0), 0), p(cx + half, joint), p(cx + half, 653), p(cx - half, 653),
+              p(cx - half, joint)]
+    radii = [r * s for r in (20, 20, 4, 20, 20, 14, 20, 20, 14)]
+    return fillet_path(points, radii)
 
 
-def twill(step=10, alpha=14):
-    layer = Image.new("RGBA", (S, S), (0, 0, 0, 0)); draw = ImageDraw.Draw(layer)
-    for k in range(-S, 2 * S, step):
-        draw.line([(k, 0), (k - S, S)], fill=(255, 255, 255, alpha), width=2)
-    return layer
+def svg(edge_width, small=False):
+    """Tile and Y on a BOX viewBox; `edge_width` in viewBox units. Small
+    icons fill the square and enlarge the Y so it reads in a taskbar."""
+    m = 0 if small else BOX * MARGIN
+    tile = BOX - 2 * m
+    radius = tile * (.18 if small else CORNER)
+    inset = edge_width / 2
+    y_width = tile * (.86 if small else .775)
+    y_left = m + (tile - y_width) / 2
+    y_top = m + tile * (.12 if small else .178)
+    return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {BOX} {BOX}">'
+            f'<rect x="{m + inset:.2f}" y="{m + inset:.2f}" width="{tile - 2 * inset:.2f}" height="{tile - 2 * inset:.2f}" '
+            f'rx="{radius - inset:.2f}" fill="{TILE}" stroke="{EDGE}" stroke-width="{edge_width:.2f}"/>'
+            f'<path d="{y_path(y_left, y_top, y_width)}" fill="{INK}"/></svg>')
 
 
-def stitching(inset, dash=22, gap=14, width=7):
-    layer = Image.new("RGBA", (S, S), (0, 0, 0, 0)); draw = ImageDraw.Draw(layer)
-    points = squircle(S, inset)
-    run, on, segment = 0.0, True, [points[0]]
-    for a, b in zip(points, points[1:] + points[:1]):
-        run += math.dist(a, b)
-        if on: segment.append(b)
-        if run >= (dash if on else gap):
-            if on and len(segment) > 1: draw.line(segment, fill=STITCH + (255,), width=width)
-            on, run, segment = not on, 0.0, [b]
-    return layer
+def render(size):
+    from PySide6.QtCore import QByteArray, QBuffer, QIODevice, QRectF, Qt
+    from PySide6.QtGui import QImage, QPainter
+    from PySide6.QtSvg import QSvgRenderer
+    renderer = QSvgRenderer(QByteArray(svg(BOX / size, small=size <= 24).encode()))
+    image = QImage(size, size, QImage.Format.Format_ARGB32_Premultiplied)
+    image.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(image)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    renderer.render(painter, QRectF(0, 0, size, size))
+    painter.end()
+    buffer = QBuffer(); buffer.open(QIODevice.OpenModeFlag.WriteOnly)
+    image.save(buffer, "PNG")
+    return bytes(buffer.data())
 
 
-def figure(character, crop_height, width, top):
-    """The character cropped at `crop_height`, `width` wide, with a soft shadow."""
-    bust = character.crop((0, 0, character.width, crop_height))
-    height = round(bust.height * width / bust.width)
-    bust = bust.resize((width, height), Image.LANCZOS)
-    shadow = Image.new("RGBA", bust.size, (20, 18, 30, 0))
-    shadow.putalpha(bust.getchannel("A").point(lambda v: int(v * .5)))
-    layer = Image.new("RGBA", (S, S + height), (0, 0, 0, 0))
-    x = (S - width) // 2
-    layer.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(18)), (x, top + 16))
-    layer.alpha_composite(bust, (x, top))
-    return layer.crop((0, 0, S, S))
-
-
-def icon(character, small=False):
-    art = gradient(DENIM_TOP, DENIM_BOTTOM)
-    art.alpha_composite(twill())
-    if small:
-        art.alpha_composite(figure(character, int(character.height * .62), int(S * 1.02), int(S * .06)))
-    else:
-        art.alpha_composite(stitching(S * .085))
-        art.alpha_composite(figure(character, int(character.height * .9), int(S * .86), int(S * .1)))
-    mask = Image.new("L", (S, S), 0)
-    ImageDraw.Draw(mask).polygon(squircle(S, S * .04), fill=255)
-    mask = mask.filter(ImageFilter.GaussianBlur(1))
-    out = Image.new("RGBA", (S, S), (0, 0, 0, 0)); out.paste(art, (0, 0), mask)
-    return out
-
-
-def ico(images):
+def ico(entries):
     """A Windows icon holding PNG images (supported since Windows Vista)."""
-    header = struct.pack("<HHH", 0, 1, len(images))
-    offset, entries, blobs = 6 + 16 * len(images), b"", b""
-    for size, data in images:
-        entries += struct.pack("<BBBBHHII", size % 256, size % 256, 0, 0, 1, 32, len(data), offset)
-        blobs += data; offset += len(data)
-    return header + entries + blobs
+    header = struct.pack("<HHH", 0, 1, len(entries))
+    offset = 6 + 16 * len(entries)
+    directory, blobs = b"", b""
+    for size, data in entries:
+        edge = 0 if size >= 256 else size
+        directory += struct.pack("<BBBBHHII", edge, edge, 0, 0, 1, 32, len(data), offset + len(blobs))
+        blobs += data
+    return header + directory + blobs
 
 
 def main():
-    character = cut_out(Image.open(ART / "standing.webp"))
-    large, small = icon(character), icon(character, small=True)
+    from PySide6.QtGui import QGuiApplication
+    app = QGuiApplication.instance() or QGuiApplication([])
+    (ROOT / "assets" / "logo").mkdir(parents=True, exist_ok=True)
+    # The interface draws the mark at many sizes; a hairline of 1/96 of the
+    # tile reads as one pixel at about 96 px and stays light when larger.
+    (ROOT / "assets" / "logo" / "mark.svg").write_text(svg(BOX / 96), encoding="utf-8")
     folder = ROOT / "assets" / "icon"; folder.mkdir(parents=True, exist_ok=True)
-    entries = []
-    for size in SIZES:
-        image = (small if size <= 32 else large).resize((size, size), Image.LANCZOS)
-        buffer = io.BytesIO(); image.save(buffer, "PNG", optimize=True)
-        if size <= 256: entries.append((size, buffer.getvalue()))
-        if size in (16, 24, 32, 48, 64, 128, 256, 512):
-            (folder / f"{size}.png").write_bytes(buffer.getvalue())
-    (ROOT / "assets" / "icon.ico").write_bytes(ico(entries))
+    for old in folder.glob("*.png"):
+        old.unlink()
+    rendered = {size: render(size) for size in SIZES}
+    for size, data in rendered.items():
+        (folder / f"{size}.png").write_bytes(data)
+    (ROOT / "assets" / "icon.ico").write_bytes(ico([(size, rendered[size]) for size in ICO_SIZES]))
+    print("wrote assets/logo/mark.svg,", len(SIZES), "PNG sizes and assets/icon.ico")
+    del app
 
 
 if __name__ == "__main__":

@@ -60,7 +60,12 @@ def run_primary(relay):
     root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent.parent))
     from .typefaces import install, TEXT
     loaded = install(root / "assets" / "fonts")
-    app.setFont(QFont(TEXT if TEXT in loaded else "Malgun Gothic" if os.name == "nt" else "Noto Sans CJK KR", 10))
+    # Interface text only: Pretendard (bundled), then the Windows system faces.
+    # PDF text keeps its own fonts.
+    font = QFont()
+    font.setFamilies(([TEXT] if TEXT in loaded else []) + ["Segoe UI Variable Text", "Segoe UI", "Malgun Gothic", "Noto Sans CJK KR"])
+    font.setPointSize(10)
+    app.setFont(font)
     icon = QIcon()
     for size in (16, 24, 32, 48, 64, 128, 256):
         icon.addFile(str(root / "assets" / "icon" / f"{size}.png"))

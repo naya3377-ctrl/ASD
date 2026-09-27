@@ -2,7 +2,7 @@
 [Setup]
 AppId={{C4F07FAA-CFCF-49C2-AE06-D47E3A65B615}
 AppName=윤DF
-AppVersion=0.9.18
+AppVersion=0.9.19
 AppPublisher=YoonDF contributors
 DefaultDirName={localappdata}\Programs\YoonDF
 DefaultGroupName=윤DF
@@ -10,7 +10,7 @@ PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir=..\dist\installer
-OutputBaseFilename=YoonDF-Setup-0.9.18
+OutputBaseFilename=YoonDF-Setup-0.9.19
 SetupIconFile=..\assets\icon.ico
 LicenseFile=..\LICENSE
 Compression=lzma2

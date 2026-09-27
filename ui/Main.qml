@@ -25,11 +25,18 @@ ApplicationWindow {
     palette.midlight: Theme.lineSoft
     palette.mid: Theme.line
     palette.dark: Theme.lineStrong
-    palette.shadow: "#40261c14"
+    palette.shadow: "#4029313a"
     palette.placeholderText: Theme.inkFaint
-    palette.toolTipBase: "#2a2420"
-    palette.toolTipText: "#f5f0e7"
+    palette.toolTipBase: Theme.tooltip
+    palette.toolTipText: Theme.tooltipInk
     Binding { target: Theme; property: "mode"; value: root.pdf ? root.pdf.themeMode : "system" }
+    Binding { target: Theme; property: "reduceMotion"; value: root.pdf ? root.pdf.reduceMotion : false }
+    // A narrow window moves the reading actions, then the page view, into ⋯
+    // so nothing in the toolbar is cut off.
+    readonly property bool compactToolbar: width < 1240
+    readonly property bool narrowToolbar: width < 1100
+    // The start mark's fade plays once per launch.
+    property bool introPlayed: false
     // Pretendard (bundled) for the whole interface; see bichaek/typefaces.py.
     property string uiFontFamily: Theme.family
     font.family: uiFontFamily
@@ -165,7 +172,7 @@ ApplicationWindow {
     property var focusState: null
     property real focusWidth: .62
     property string focusTone: "dark"
-    readonly property var focusTones: ({dark:"#1b1815", paper:"#efe6d4", gray:"#5b5650"})
+    readonly property var focusTones: ({dark:"#1c1e21", paper:"#eeebe4", gray:"#5a5f66"})
     readonly property color focusBackdrop: focusTones[focusTone]
     function startFocusReading() {
         if(!hasDocument || !dialogsClear || readerMenuOpen || tabMenu.visible || presenting || focusReading) return;
@@ -273,6 +280,19 @@ ApplicationWindow {
         target: pdf.liveEditor
         function onChanged() { if(root.commitWhenReady && !pdf.liveEditor.loading) { root.commitWhenReady=false; root.commitEdit(root.pendingEditPoint); } }
     }
+    // Where the paragraph being edited sits in the page area, for the floating
+    // editing tools. Re-evaluated as the pages scroll or zoom.
+    function editAnchor() {
+        pages.contentY; pages.contentX; pages.width; root.zoom; pdf.liveEditor.height; workspace.height;
+        var d=textDialog.targetData;
+        if(!textDialog.visible || !d || d.page===undefined) return null;
+        var cell=cellForPage(d.page), r=d.displayRect || d.rect;
+        if(!cell || !r) return null;
+        var f=cell.pageWidth/Math.max(1,cell.pdfWidth);
+        var p=cell.mapToItem(workspace, r[0]*f, r[1]*f);
+        var h=Math.max((r[3]-r[1])*f, d.mode==="replace" ? pdf.liveEditor.height*f : 0);
+        return {x:p.x, y:p.y, w:(r[2]-r[0])*f, h:h};
+    }
     // One line under the toolbar explaining what the current tool expects.
     function hintText() {
         if(tool==="editText") return textDialog.visible
@@ -361,24 +381,22 @@ ApplicationWindow {
         objectName: "readerHeader"; visible: !root.presenting && !root.focusReading
         enabled: !(root.tabWorkspace && root.tabWorkspace.closing)
         spacing: 0
-        // Row 1 · brand and document tabs. Tabs can be dragged to reorder.
+        // Row 1 · document tabs, 36 px. The open document is a white tab that
+        // joins the toolbar below; the others rest on the grey strip. Tabs can
+        // be dragged to reorder.
         Rectangle {
-            Layout.fillWidth: true; implicitHeight: 42; color: Theme.chrome
+            Layout.fillWidth: true; implicitHeight: Theme.tabBarHeight; color: Theme.tabStrip
+            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: Theme.hairline; color: Theme.line }
             RowLayout {
-                anchors.fill: parent; anchors.leftMargin: 12; anchors.rightMargin: 10; anchors.topMargin: 4; spacing: 4
-                BrandMark { objectName: "titleMark"; size: 24; Layout.alignment: Qt.AlignVCenter }
-                Text {
-                    textFormat: Text.StyledText; text: "윤<font color='" + Theme.indigo + "'>DF</font>"
-                    font.pixelSize: Theme.headline+1; font.weight: Font.Bold; color: Theme.ink; Layout.leftMargin: 6; Layout.rightMargin: 14
-                }
+                anchors.fill: parent; anchors.leftMargin: Theme.gapS; anchors.rightMargin: Theme.gapXs; spacing: Theme.gapXs
                 Text {
                     visible: !root.tabWorkspace; Layout.fillWidth: true; elide: Text.ElideMiddle
-                    text: root.hasDocument ? pdf.document.name : ""; font.pixelSize: Theme.body; color: Theme.ink
+                    text: root.hasDocument ? pdf.document.name : ""; font.pixelSize: Theme.small; color: Theme.ink
                 }
                 ListView {
                     id: tabStrip; objectName: "documentTabs"; visible: !!root.tabWorkspace
                     Layout.fillWidth: true; Layout.fillHeight: true
-                    orientation: ListView.Horizontal; spacing: 4; clip: true; interactive: false
+                    orientation: ListView.Horizontal; spacing: 2; clip: true; interactive: false
                     boundsBehavior: Flickable.StopAtBounds
                     model: root.tabWorkspace ? root.tabWorkspace.tabModel : null
                     property int draggingIndex: -1
@@ -404,6 +422,7 @@ ApplicationWindow {
                         property string pendingName: ""
                         readonly property bool canRename: current && !!modelData.path && root.hasDocument && root.tabActionsEnabled && !pdf.busy && !pdf.ocrBusy && !textDialog.visible
                         readonly property string stem: String(modelData.name || "").replace(/\.pdf$/i, "")
+                        readonly property bool pointed: tabMouse.containsMouse || closeButton.hovered
                         onRenamingChanged: root.renamingTab=renaming
                         function startRename() { renaming=true; renameField.text=stem; renameField.forceActiveFocus(); renameField.selectAll(); }
                         function finishRename(apply) {
@@ -423,21 +442,22 @@ ApplicationWindow {
                             // Confirmed (name changed) or refused (work finished without it): drop the preview.
                             function onStateChanged() { if(!root.pdf.busy) documentTab.pendingName=""; }
                         }
-                        width: Math.min(230,Math.max(150,tabTitle.implicitWidth+62)); height: tabStrip.height
+                        width: Math.min(220,Math.max(140,tabTitle.implicitWidth+64)); height: tabStrip.height
                         z: tabDrag.active ? 10 : current ? 2 : 1
                         transform: Translate { x: documentTab.dragOffset }
-                        // The open document is a raised pill; the others rest in the bar.
-                        Shadow { target: tabFace; level: "small"; visible: documentTab.current || tabDrag.active }
-                        Rectangle {
-                            id: tabFace; anchors.fill: parent; anchors.topMargin: 4; anchors.bottomMargin: 4
-                            radius: Theme.radius
-                            color: documentTab.current || tabDrag.active ? Theme.raised : tabMouse.containsMouse ? Theme.hover : "transparent"
-                            border.width: documentTab.current ? Theme.hairline : 0; border.color: Theme.lineSoft
-                            opacity: tabDrag.active ? .95 : 1
-                            Behavior on color { ColorAnimation { duration: Theme.fast } }
+                        // The face: top corners rounded, bottom open into the toolbar.
+                        Item {
+                            id: tabFace; anchors.fill: parent; anchors.topMargin: 5; clip: true
+                            Rectangle {
+                                width: parent.width; height: parent.height+Theme.radiusLarge
+                                radius: Theme.radius+2
+                                color: documentTab.current || tabDrag.active ? Theme.chrome : documentTab.pointed ? Theme.hover : "transparent"
+                                border.width: documentTab.current || tabDrag.active ? Theme.hairline : 0; border.color: Theme.line
+                                Behavior on color { ColorAnimation { duration: Theme.selectMs; easing.type: Easing.OutCubic } }
+                            }
                         }
                         MouseArea {
-                            id: tabMouse; anchors.fill: parent; anchors.topMargin: 4; anchors.bottomMargin: 4; hoverEnabled: true; acceptedButtons: Qt.LeftButton | Qt.MiddleButton
+                            id: tabMouse; anchors.fill: parent; anchors.topMargin: 5; hoverEnabled: true; acceptedButtons: Qt.LeftButton | Qt.MiddleButton
                             enabled: root.tabActionsEnabled
                             onClicked: function(event){
                                 if(event.button===Qt.MiddleButton) root.tabWorkspace.closeId(documentTab.modelData.id);
@@ -464,17 +484,11 @@ ApplicationWindow {
                         ToolTip.visible: tabMouse.containsMouse && !tabDrag.active && !renaming; ToolTip.delay: 700
                         ToolTip.text: (modelData.path || "새 문서")+"\n끌어서 순서를 바꿀 수 있어요."+(canRename ? "\n한 번 더 클릭하면 파일 이름을 바꿀 수 있어요." : "")
                         RowLayout {
-                            anchors.fill: parent; anchors.topMargin: 4; anchors.bottomMargin: 4; anchors.leftMargin: 11; anchors.rightMargin: 3; spacing: 7
-                            // Unsaved: a leather-brown dot. Working: a ring.
-                            Rectangle {
-                                objectName: "tabState"+documentTab.index
-                                width: 7; height: 7; radius: 3.5; color: documentTab.modelData.dirty ? Theme.leather : "transparent"
-                                border.color: documentTab.modelData.dirty || documentTab.modelData.busy ? Theme.leather : "transparent"; border.width: 1.5
-                            }
+                            anchors.fill: parent; anchors.topMargin: 5; anchors.leftMargin: Theme.gapM; anchors.rightMargin: Theme.gapXs; spacing: Theme.gapXs
                             TextField {
                                 id: renameField; objectName: "tabRenameField"+documentTab.index
                                 visible: documentTab.renaming; Layout.fillWidth: true; Layout.preferredHeight: 24
-                                font.pixelSize: Theme.small; font.weight: Font.DemiBold; color: Theme.ink; selectByMouse: true
+                                font.pixelSize: Theme.small; font.weight: Font.Medium; color: Theme.ink; selectByMouse: true
                                 leftPadding: 6; rightPadding: 6; topPadding: 0; bottomPadding: 0; verticalAlignment: TextInput.AlignVCenter
                                 selectionColor: Theme.selection; selectedTextColor: Theme.ink
                                 background: Rectangle { radius: Theme.radiusSmall; color: Theme.field; border.width: 2; border.color: Theme.focusRing }
@@ -483,136 +497,167 @@ ApplicationWindow {
                                 Keys.onEscapePressed: documentTab.finishRename(false)
                                 onActiveFocusChanged: if(!activeFocus) documentTab.finishRename(true)
                             }
-                            Text { id: tabTitle; visible: !documentTab.renaming; text: documentTab.pendingName || documentTab.modelData.name; Layout.fillWidth: true; elide: Text.ElideMiddle; color: documentTab.current ? Theme.ink : Theme.inkMuted; font.pixelSize: Theme.small; font.weight: documentTab.current ? Font.DemiBold : Font.Medium }
-                            ActionButton { objectName: "closeTab"+documentTab.index; glyph: "close"; compact: true; implicitWidth: 22; implicitHeight: 22; hint: "탭 닫기 · Ctrl+W"; enabled: root.tabActionsEnabled; opacity: documentTab.current || tabMouse.containsMouse || hovered ? 1 : 0; onClicked: root.tabWorkspace.closeId(documentTab.modelData.id) }
+                            Text {
+                                id: tabTitle; visible: !documentTab.renaming; text: documentTab.pendingName || documentTab.modelData.name
+                                Layout.fillWidth: true; elide: Text.ElideMiddle; font.pixelSize: Theme.small
+                                font.weight: documentTab.current ? Font.Medium : Font.Normal
+                                color: documentTab.current ? Theme.ink : Theme.inkMuted
+                                Behavior on color { ColorAnimation { duration: Theme.selectMs } }
+                            }
+                            // Unsaved: an ink dot in the close button's place; working: a ring.
+                            // Pointing at the tab turns the dot back into the close button.
+                            Item {
+                                Layout.preferredWidth: 24; Layout.preferredHeight: 24
+                                Rectangle {
+                                    objectName: "tabState"+documentTab.index
+                                    anchors.centerIn: parent; width: 8; height: 8; radius: 4
+                                    visible: !documentTab.pointed && (documentTab.modelData.dirty || documentTab.modelData.busy)
+                                    color: documentTab.modelData.dirty ? Theme.ink : "transparent"
+                                    border.color: Theme.ink; border.width: 1.5
+                                }
+                                ActionButton {
+                                    id: closeButton; objectName: "closeTab"+documentTab.index; anchors.fill: parent
+                                    glyph: "close"; iconSize: 14; implicitWidth: 24; implicitHeight: 24; leftPadding: 5; rightPadding: 5
+                                    hint: "탭 닫기 · Ctrl+W"; enabled: root.tabActionsEnabled
+                                    opacity: documentTab.pointed || (documentTab.current && !documentTab.modelData.dirty && !documentTab.modelData.busy) ? (enabled ? 1 : .38) : 0
+                                    onClicked: root.tabWorkspace.closeId(documentTab.modelData.id)
+                                }
+                            }
                         }
                     }
                 }
-                ActionButton { visible: !!root.tabWorkspace; glyph: "add"; compact: true; hint: "새 탭 · Ctrl+T"; enabled: root.tabActionsEnabled; onClicked: root.tabWorkspace.newTab() }
-                ActionButton { visible: !!root.tabWorkspace; objectName: "openDocumentsButton"; glyph: "down"; compact: true; hint: "열린 문서 목록"; enabled: root.tabActionsEnabled; onClicked: tabMenu.popup() }
+                ActionButton { visible: !!root.tabWorkspace; glyph: "add"; iconSize: 16; hint: "새 탭 · Ctrl+T"; enabled: root.tabActionsEnabled; onClicked: root.tabWorkspace.newTab() }
+                ActionButton { visible: !!root.tabWorkspace; objectName: "openDocumentsButton"; glyph: "down"; iconSize: 16; hint: "열린 문서 목록"; enabled: root.tabActionsEnabled; onClicked: tabMenu.popup(tabMenuAnchor, tabMenuAnchor.width-tabMenu.width, tabMenuAnchor.height) }
+                Item { id: tabMenuAnchor; Layout.preferredWidth: 0; Layout.fillHeight: true }
             }
-            Menu {
+            AppMenu {
                 id: tabMenu; objectName: "openDocumentsMenu"
                 Repeater {
                     model: root.tabWorkspace ? root.tabWorkspace.tabModel : null
-                    MenuItem { required property var modelData; required property int index; text: (modelData.dirty ? "● " : "")+modelData.name; checkable: true; checked: index===root.tabWorkspace.activeIndex; onTriggered: root.tabWorkspace.activateId(modelData.id) }
+                    AppMenuItem { required property var modelData; required property int index; text: (modelData.dirty ? "● " : "")+modelData.name; checkable: true; checked: index===root.tabWorkspace.activeIndex; onTriggered: root.tabWorkspace.activateId(modelData.id) }
                 }
             }
         }
-        // Row 2 · one toolbar: modes on the left, view and file actions on the right.
+        // Row 2 · the toolbar, 48 px, in small groups: the sidebar, the mode and
+        // its tools on the left; page view, zoom, reading and file actions on the
+        // right. On a narrow window the reading actions move into ⋯.
         Rectangle {
-            Layout.fillWidth: true; implicitHeight: 48; color: Theme.chrome
+            Layout.fillWidth: true; implicitHeight: Theme.toolbarHeight; color: Theme.chrome
             RowLayout {
-                anchors.fill: parent; anchors.leftMargin: 10; anchors.rightMargin: 12; anchors.bottomMargin: Theme.hairline+2; spacing: 4
-                ActionButton { glyph: "sidebar"; hint: "사이드바 · 페이지와 목차"; active: root.sidebarOpen; onClicked: root.sidebarOpen=!root.sidebarOpen }
+                anchors.fill: parent; anchors.leftMargin: Theme.gapS; anchors.rightMargin: Theme.gapS; anchors.bottomMargin: Theme.hairline; spacing: Theme.gapXs
+                ActionButton { objectName: "sidebarButton"; glyph: "sidebar"; hint: "사이드바 · 페이지와 목차"; active: root.sidebarOpen; onClicked: root.sidebarOpen=!root.sidebarOpen }
                 ToolbarRule { }
-                // The three modes as one segmented control; the chosen one rides a white pill.
+                // Read, comment, edit as one segmented control; the chosen one rides a white pill.
                 Segmented {
-                    ActionButton { objectName: "readModeButton"; tab: true; compact: true; enabled: !textDialog.visible && !annotationEditor.visible; text: "읽기"; hint: "읽기 · 주석 목록과 편집 도구를 닫아요"; implicitHeight: 26; implicitWidth: 60; active: root.workspaceMode === "read"; onClicked: root.setMode("read") }
-                    ActionButton { objectName: "commentsModeButton"; tab: true; compact: true; text: "주석"; hint: "주석 · 오른쪽에 주석 목록과 표시 도구"; implicitHeight: 26; implicitWidth: 60; active: root.workspaceMode === "comments"; enabled: root.hasDocument && !textDialog.visible && !annotationEditor.visible; onClicked: root.setMode("comments") }
-                    ActionButton { objectName: "editModeButton"; tab: true; compact: true; text: "편집"; hint: "편집 · 본문 수정, 텍스트·이미지 추가"; implicitHeight: 26; implicitWidth: 60; active: root.workspaceMode === "edit"; enabled: root.hasDocument && !textDialog.visible && !annotationEditor.visible; onClicked: root.setMode("edit") }
+                    ActionButton { objectName: "readModeButton"; tab: true; compact: true; enabled: !textDialog.visible && !annotationEditor.visible; text: "읽기"; hint: "읽기 · 주석 목록과 편집 도구를 닫아요"; implicitWidth: 58; active: root.workspaceMode === "read"; onClicked: root.setMode("read") }
+                    ActionButton { objectName: "commentsModeButton"; tab: true; compact: true; text: "주석"; hint: "주석 · 오른쪽에 주석 목록, 도구줄에 표시 도구"; implicitWidth: 58; active: root.workspaceMode === "comments"; enabled: root.hasDocument && !textDialog.visible && !annotationEditor.visible; onClicked: root.setMode("comments") }
+                    ActionButton { objectName: "editModeButton"; tab: true; compact: true; text: "편집"; hint: "편집 · 본문 수정, 텍스트·이미지 추가"; implicitWidth: 58; active: root.workspaceMode === "edit"; enabled: root.hasDocument && !textDialog.visible && !annotationEditor.visible; onClicked: root.setMode("edit") }
                 }
                 Segmented {
-                    visible: root.workspaceMode === "read"; Layout.leftMargin: 6
-                    ActionButton { glyph: "text"; tab: true; compact: true; implicitHeight: 26; implicitWidth: 34; hint: "텍스트 선택"; active: root.tool === "read"; enabled: root.hasDocument; onClicked: root.useTool("read") }
-                    ActionButton { glyph: "hand"; tab: true; compact: true; implicitHeight: 26; implicitWidth: 34; hint: "손 도구 · 끌어서 이동"; active: root.tool === "hand"; enabled: root.hasDocument; onClicked: root.useTool("hand") }
+                    visible: root.workspaceMode === "read"; Layout.leftMargin: Theme.gapXs
+                    ActionButton { glyph: "text"; tab: true; implicitWidth: 36; hint: "텍스트 선택"; active: root.tool === "read"; enabled: root.hasDocument; onClicked: root.useTool("read") }
+                    ActionButton { glyph: "hand"; tab: true; implicitWidth: 36; hint: "손 도구 · 끌어서 이동"; active: root.tool === "hand"; enabled: root.hasDocument; onClicked: root.useTool("hand") }
+                }
+                // Comment tools: marks, a note, their colour and undo.
+                RowLayout {
+                    visible: root.workspaceMode === "comments"; spacing: 2; Layout.leftMargin: Theme.gapXs
+                    ActionButton { objectName: "commentHighlightButton"; glyph: "highlight"; hint: "형광펜 · 글자를 선택하거나 드래그"; active: root.tool==="highlight"; enabled: commentsPanel.canMark; onClicked: commentsPanel.applyMarkup("highlight") }
+                    ActionButton { objectName: "commentUnderlineButton"; glyph: "underline"; hint: "밑줄"; active: root.tool==="underline"; enabled: commentsPanel.canMark; onClicked: commentsPanel.applyMarkup("underline") }
+                    ActionButton { objectName: "commentStrikeoutButton"; glyph: "strikeout"; hint: "취소선"; active: root.tool==="strikeout"; enabled: commentsPanel.canMark; onClicked: commentsPanel.applyMarkup("strikeout") }
+                    ActionButton { objectName: "commentNoteButton"; glyph: "note"; hint: "메모 · 선택한 글자에, 또는 페이지에서 위치 클릭"; active: root.tool==="note"; enabled: commentsPanel.canMark; onClicked: commentsPanel.addNote() }
+                    // Colour for new marks: these are the colours saved in the PDF.
+                    Row {
+                        objectName: "commentColors"; spacing: 0; Layout.leftMargin: Theme.gapXs
+                        Repeater {
+                            model: commentsPanel.colors
+                            delegate: Item {
+                                required property string modelData
+                                width: 24; height: 32
+                                readonly property bool chosen: pdf.annotationColor===modelData
+                                Rectangle { anchors.centerIn: parent; width: 20; height: 20; radius: 10; color: "transparent"; border.color: Theme.accent; border.width: 2; visible: parent.chosen }
+                                Rectangle { anchors.centerIn: parent; width: 14; height: 14; radius: 7; color: parent.modelData; border.color: "#2629313a"; border.width: Theme.hairline }
+                                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: pdf.setAnnotationColor(parent.modelData) }
+                            }
+                        }
+                    }
+                    ActionButton { glyph: "undo"; hint: "실행 취소 · Ctrl+Z"; enabled: commentsPanel.canMark && pdf.document.canUndo; onClicked: pdf.undo() }
                 }
                 Item { Layout.fillWidth: true }
                 AppComboBox {
-                    id: pageViewMode; objectName: "pageViewMode"; implicitWidth: 108; implicitHeight: 28; model: ["한 페이지", "두 페이지"]
+                    id: pageViewMode; objectName: "pageViewMode"; implicitWidth: 112; model: ["한 페이지", "두 페이지"]
+                    visible: !root.narrowToolbar
                     enabled: root.hasDocument && !textDialog.visible; currentIndex: root.twoPageView ? 1 : 0
                     onActivated: root.setTwoPageView(currentIndex===1)
                 }
                 // Zoom out, the size, zoom in: one grouped control.
                 Rectangle {
-                    Layout.leftMargin: 6; radius: Theme.radius+1; color: Theme.well
-                    implicitWidth: zoomRow.implicitWidth+4; implicitHeight: 30
+                    Layout.leftMargin: Theme.gapXs; radius: Theme.radius+1; color: Theme.well
+                    implicitWidth: zoomRow.implicitWidth; implicitHeight: Theme.control
                     Row {
-                        id: zoomRow; x: 2; y: 2; spacing: 0
-                ActionButton { glyph: "minus"; compact: true; implicitHeight: 26; implicitWidth: 30; hint: "축소 · Ctrl+-"; enabled: root.hasDocument; onClicked: root.zoomBy(1/1.15) }
-                ActionButton {
-                    id: zoomButton; objectName: "zoomButton"; compact: true; implicitHeight: 26; implicitWidth: 58; enabled: root.hasDocument
-                    text: root.zoomLabel; hint: "배율 선택 · Ctrl+0 너비 맞춤"; font.pixelSize: Theme.small; font.features: ({ "tnum": 1 })
-                    onClicked: zoomMenu.popup(zoomButton, 0, zoomButton.height+4)
-                    Menu {
-                        id: zoomMenu
-                        MenuItem { text: "너비 맞춤"; onTriggered: root.zoom=1 }
-                        MenuItem { text: "페이지 맞춤"; onTriggered: root.fitPage() }
-                        MenuSeparator {}
-                        Repeater {
-                            model: [50,75,100,125,150,200,300]
-                            MenuItem { required property int modelData; text: modelData+"%"; onTriggered: root.setActualZoom(modelData/100) }
+                        id: zoomRow; spacing: 0
+                        ActionButton { glyph: "minus"; implicitWidth: 32; hint: "축소 · Ctrl+-"; enabled: root.hasDocument; onClicked: root.zoomBy(1/1.15) }
+                        ActionButton {
+                            id: zoomButton; objectName: "zoomButton"; compact: true; implicitWidth: 60; enabled: root.hasDocument
+                            text: root.zoomLabel; hint: "배율 선택 · Ctrl+0 너비 맞춤"; font.pixelSize: Theme.small; font.features: ({ "tnum": 1 })
+                            onClicked: zoomMenu.popup(zoomButton, 0, zoomButton.height+4)
+                            AppMenu {
+                                id: zoomMenu
+                                AppMenuItem { text: "너비 맞춤"; onTriggered: root.zoom=1 }
+                                AppMenuItem { text: "페이지 맞춤"; onTriggered: root.fitPage() }
+                                AppMenuSeparator {}
+                                Repeater {
+                                    model: [50,75,100,125,150,200,300]
+                                    AppMenuItem { required property int modelData; text: modelData+"%"; onTriggered: root.setActualZoom(modelData/100) }
+                                }
+                            }
                         }
-                    }
-                }
-                ActionButton { glyph: "add"; compact: true; implicitHeight: 26; implicitWidth: 30; hint: "확대 · Ctrl++"; enabled: root.hasDocument; onClicked: root.zoomBy(1.15) }
+                        ActionButton { glyph: "add"; implicitWidth: 32; hint: "확대 · Ctrl++"; enabled: root.hasDocument; onClicked: root.zoomBy(1.15) }
                     }
                 }
                 ToolbarRule { }
-                ActionButton { objectName: "focusReadingButton"; glyph: "focus"; hint: "집중 읽기 · F11"; enabled: root.hasDocument && root.dialogsClear && !pdf.busy; onClicked: root.startFocusReading() }
                 ActionButton { glyph: "search"; hint: "문서 검색 · Ctrl+F"; active: root.searchOpen; enabled: root.hasDocument; onClicked: { root.searchOpen=!root.searchOpen; root.sidebarOpen=true; if(root.searchOpen) searchInput.forceActiveFocus(); } }
-                ActionButton { objectName: "presentationButton"; glyph: "present"; hint: "슬라이드 쇼 · F5"; enabled: root.hasDocument && !pdf.busy && !pdf.ocrBusy; onClicked: root.startPresentation() }
-                ActionButton { objectName: "printButton"; glyph: "print"; hint: "인쇄 · Ctrl+P"; enabled: root.tabActionsEnabled && root.hasDocument && pdf.document.printable && !pdf.busy && !pdf.ocrBusy; onClicked: pdf.printDocument() }
+                ActionButton { objectName: "focusReadingButton"; visible: !root.compactToolbar; glyph: "focus"; hint: "집중 읽기 · F11"; enabled: root.hasDocument && root.dialogsClear && !pdf.busy; onClicked: root.startFocusReading() }
+                ActionButton { objectName: "presentationButton"; visible: !root.compactToolbar; glyph: "present"; hint: "슬라이드 쇼 · F5"; enabled: root.hasDocument && !pdf.busy && !pdf.ocrBusy; onClicked: root.startPresentation() }
+                ActionButton { objectName: "printButton"; visible: !root.compactToolbar; glyph: "print"; hint: "인쇄 · Ctrl+P"; enabled: root.tabActionsEnabled && root.hasDocument && pdf.document.printable && !pdf.busy && !pdf.ocrBusy; onClicked: pdf.printDocument() }
                 ToolbarRule { }
                 ActionButton { glyph: "open"; hint: "열기 · Ctrl+O"; enabled: root.tabActionsEnabled && !pdf.busy && !pdf.ocrBusy; onClicked: pdf.chooseOpen() }
-                ActionButton { objectName: "saveButton"; text: "저장"; compact: true; primary: root.hasDocument && pdf.document.dirty; outlined: !(root.hasDocument && pdf.document.dirty); implicitWidth: 60; Layout.leftMargin: 4; Layout.rightMargin: 4; hint: "저장 · Ctrl+S"; enabled: root.tabActionsEnabled && root.hasDocument && !pdf.busy && !pdf.ocrBusy; onClicked: pdf.save(false) }
+                ActionButton { objectName: "saveButton"; text: "저장"; compact: true; primary: root.hasDocument && pdf.document.dirty; outlined: !(root.hasDocument && pdf.document.dirty); implicitWidth: 58; Layout.leftMargin: 2; Layout.rightMargin: 2; hint: "저장 · Ctrl+S"; enabled: root.tabActionsEnabled && root.hasDocument && !pdf.busy && !pdf.ocrBusy; onClicked: pdf.save(false) }
                 ActionButton { objectName: "settingsButton"; glyph: "settings"; hint: "설정"; onClicked: settingsDialog.open() }
                 ActionButton {
                     id: moreButton; objectName: "moreButton"; glyph: "more"; hint: "더 보기"
                     onClicked: moreMenu.popup(moreButton, moreButton.width-moreMenu.width, moreButton.height+4)
-                    Menu {
-                        id: moreMenu; width: 240
-                        MenuItem { objectName: "mergeButton"; text: "PDF 결합…"; enabled: root.tabActionsEnabled && !pdf.busy && !pdf.ocrBusy; onTriggered: pdf.showMerge() }
-                        MenuItem { text: "다른 이름으로 저장…"; enabled: root.tabActionsEnabled && root.hasDocument && !pdf.busy && !pdf.ocrBusy; onTriggered: pdf.save(true) }
-                        MenuItem { text: "문자 인식 (OCR)…"; enabled: root.canEdit; onTriggered: { pdf.inspectOcr(); ocrDialog.open(); } }
-                        MenuSeparator {}
-                        MenuItem { text: Theme.dark ? "밝은 화면으로" : "어두운 화면으로"; onTriggered: pdf.setThemeMode(Theme.dark ? "light" : "dark") }
-                        MenuItem { text: "윤DF 정보"; onTriggered: aboutDialog.open() }
+                    AppMenu {
+                        id: moreMenu; objectName: "moreMenu"; width: 244
+                        // Reading actions live here when the toolbar is narrow.
+                        AppMenuItem { visible: root.compactToolbar; text: "집중 읽기\tF11"; enabled: root.hasDocument && root.dialogsClear && !pdf.busy; onTriggered: root.startFocusReading() }
+                        AppMenuItem { visible: root.compactToolbar; text: "슬라이드 쇼\tF5"; enabled: root.hasDocument && !pdf.busy && !pdf.ocrBusy; onTriggered: root.startPresentation() }
+                        AppMenuItem { visible: root.compactToolbar; text: "인쇄…\tCtrl+P"; enabled: root.tabActionsEnabled && root.hasDocument && pdf.document.printable && !pdf.busy && !pdf.ocrBusy; onTriggered: pdf.printDocument() }
+                        AppMenuItem { visible: root.narrowToolbar; text: root.twoPageView ? "한 페이지 보기" : "두 페이지 보기"; enabled: root.hasDocument && !textDialog.visible; onTriggered: root.setTwoPageView(!root.twoPageView) }
+                        AppMenuSeparator { visible: root.compactToolbar; height: visible ? implicitHeight : 0 }
+                        AppMenuItem { objectName: "mergeButton"; text: "PDF 결합…"; enabled: root.tabActionsEnabled && !pdf.busy && !pdf.ocrBusy; onTriggered: pdf.showMerge() }
+                        AppMenuItem { text: "다른 이름으로 저장…\tCtrl+Shift+S"; enabled: root.tabActionsEnabled && root.hasDocument && !pdf.busy && !pdf.ocrBusy; onTriggered: pdf.save(true) }
+                        AppMenuItem { text: "문자 인식 (OCR)…"; enabled: root.canEdit; onTriggered: { pdf.inspectOcr(); ocrDialog.open(); } }
+                        AppMenuSeparator {}
+                        AppMenuItem { text: Theme.dark ? "밝은 화면으로" : "어두운 화면으로"; onTriggered: pdf.setThemeMode(Theme.dark ? "light" : "dark") }
+                        AppMenuItem { text: "윤DF 정보"; onTriggered: aboutDialog.open() }
                     }
                 }
             }
             Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: Theme.hairline; color: Theme.line }
         }
-        Rectangle {
-            visible: textDialog.visible; Layout.fillWidth: true; height: visible ? 50 : 0; color: Theme.accentSoft
-            Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: Theme.hairline; color: Theme.lineSoft }
-            RowLayout {
-                anchors.fill: parent; anchors.leftMargin: 16; anchors.rightMargin: 12; anchors.bottomMargin: Theme.hairline; spacing: 8
-                Rectangle { width: 26; height: 26; radius: 13; color: Theme.accent; Icon { anchors.centerIn: parent; name: "edit"; size: 15; tone: Theme.inkOnAccent } }
-                Text { text: "본문 편집 중"; color: Theme.accentInk; font.weight: Font.Bold; Layout.rightMargin: 6 }
-                FontPicker { id: fontChoice; controller: root.pdf; Layout.fillWidth: true; Layout.maximumWidth: 320; enabled: !pdf.busy }
-                ActionButton { text: "글꼴 파일"; enabled: !pdf.busy; onClicked: pdf.chooseFont() }
-                TextField { id: sizeInput; objectName: "fontSizeInput"; Layout.preferredWidth: 62; text: textDialog.fontSize.toFixed(2); validator: DoubleValidator { bottom:4; top:200 } selectByMouse: true; onTextEdited: if(acceptableInput) {textDialog.fontSize=Number(text);pdf.liveEditor.setSize(Number(text));} }
-                Text { text: "pt"; color: Theme.inkMuted; font.pixelSize: Theme.small }
-                Text { text: textDialog.targetData.mode==="replace" ? "자동 줄바꿈" : "높이"; color: Theme.inkMuted }
-                TextField { visible: textDialog.targetData.mode!=="replace"; objectName: "inlineHeightInput"; Layout.preferredWidth: 62; text: textDialog.areaHeight.toFixed(0); validator: DoubleValidator { bottom:5; top:20000 } selectByMouse: true; onTextEdited: if(acceptableInput) textDialog.areaHeight=Number(text) }
-                Item { Layout.fillWidth: true }
-                ActionButton { objectName: "cancelTextButton"; text: "취소"; outlined: true; compact: true; enabled: !pdf.busy; onClicked: {root.closeAfterEdit=false;textDialog.close();} }
-                ActionButton { objectName: "applyTextButton"; text: "적용"; primary: true; compact: true; enabled: !pdf.busy && (textDialog.targetData.mode!=="replace" || pdf.liveEditor.canApply); onClicked: pdf.applyText(textDialog.targetData,textDialog.text,textDialog.fontSize,textDialog.areaHeight) }
-            }
-        }
-        Rectangle {
-            visible: textDialog.visible && textDialog.targetData.mode==="replace" && pdf.liveEditor.status.length>0
-            Layout.fillWidth: true; height: visible ? statusLabel.implicitHeight+16 : 0; color: Theme.warnSurface
-            RowLayout {
-                anchors.fill: parent; anchors.leftMargin: 16; anchors.rightMargin: 10
-                Text { id: statusLabel; objectName: "inlineFontStatus"; Layout.fillWidth: true; text: pdf.liveEditor.status; wrapMode: Text.WordWrap; color: Theme.warnInk; font.pixelSize: Theme.body }
-                ActionButton { objectName: "useMissingFont"; visible: pdf.liveEditor.canUseFallback; text: "없는 글자만 대체"; implicitHeight: 28; onClicked: pdf.liveEditor.useFallback() }
-                ActionButton { objectName: "retryFont"; visible: !pdf.liveEditor.loading && !pdf.liveEditor.canApply; text: "다시 시도"; implicitHeight: 28; onClicked: pdf.liveEditor.retry() }
-            }
-        }
+        // One line under the toolbar explaining what the current tool expects.
         Rectangle {
             visible: root.hasDocument && ((root.tool !== "read" && root.tool !== "hand") || pdf.pageTextState === "empty" || pdf.pageTextState === "restricted")
-            Layout.fillWidth: true; height: visible ? 32 : 0; color: Theme.window
+            Layout.fillWidth: true; height: visible ? 32 : 0; color: Theme.chrome
             Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: Theme.hairline; color: Theme.lineSoft }
             RowLayout {
-                anchors.fill: parent; anchors.leftMargin: 16; anchors.rightMargin: 12; anchors.bottomMargin: Theme.hairline; spacing: 9
-                Rectangle { width: 7; height: 7; radius: 3.5; color: Theme.accent }
+                anchors.fill: parent; anchors.leftMargin: Theme.gapL; anchors.rightMargin: Theme.gapM; anchors.bottomMargin: Theme.hairline; spacing: Theme.gapS
+                Rectangle { width: 6; height: 6; radius: 3; color: Theme.accent }
                 Text {
                     objectName: "toolHint"; Layout.fillWidth: true; font.pixelSize: Theme.small; color: Theme.inkSoft; elide: Text.ElideRight
                     text: root.hintText()
                 }
-                ActionButton { visible: pdf.pageTextState === "empty" && !pdf.ocrBusy; compact: true; outlined: true; implicitHeight: 24; text: "이 페이지 OCR"; enabled: root.canEdit; onClicked: pdf.recognizeCurrentPage() }
+                ActionButton { visible: pdf.pageTextState === "empty" && !pdf.ocrBusy; compact: true; outlined: true; implicitHeight: 28; text: "이 페이지 OCR"; enabled: root.canEdit; onClicked: pdf.recognizeCurrentPage() }
             }
         }
     }
@@ -620,37 +665,42 @@ ApplicationWindow {
     RowLayout {
         objectName: "readerWorkspace"; visible: !root.presenting
         anchors.fill: parent; spacing: 0
-        Rectangle {
-            visible: root.sidebarOpen && !root.focusReading
-            Layout.preferredWidth: 224; Layout.fillHeight: true; color: Theme.sidebar
+        // Left · pages, bookmarks and search, 220 px.
+        SidePanel {
+            objectName: "sidebarPanel"
+            open: root.sidebarOpen && !root.focusReading; fromLeft: true
+            Layout.preferredWidth: Theme.sidebarWidth; Layout.fillHeight: true
+            Rectangle {
+                anchors.fill: parent; color: Theme.sidebar
+                Rectangle { anchors.right: parent.right; height: parent.height; width: Theme.hairline; color: Theme.line; z: 5 }
             ColumnLayout {
-                anchors.fill: parent; spacing: 0
+                anchors.fill: parent; anchors.rightMargin: Theme.hairline; spacing: 0
                 RowLayout {
-                    Layout.fillWidth: true; Layout.leftMargin: 12; Layout.rightMargin: 14; Layout.topMargin: 12; Layout.bottomMargin: 10; spacing: 0
+                    Layout.fillWidth: true; Layout.leftMargin: Theme.gapM; Layout.rightMargin: Theme.gapM; Layout.topMargin: Theme.gapM; Layout.bottomMargin: Theme.gapS; spacing: 0
                     visible: !root.searchOpen
                     Segmented {
-                        ActionButton { objectName: "sidebarPagesTab"; tab: true; compact: true; implicitHeight: 26; implicitWidth: 62; text: "페이지"; active: root.sidebarView==="pages"; onClicked: root.sidebarView="pages" }
-                        ActionButton { objectName: "sidebarOutlineTab"; tab: true; compact: true; implicitHeight: 26; implicitWidth: 52; text: "목차"; active: root.sidebarView==="outline"; enabled: root.hasDocument; onClicked: root.sidebarView="outline" }
+                        ActionButton { objectName: "sidebarPagesTab"; tab: true; compact: true; implicitWidth: 62; text: "페이지"; active: root.sidebarView==="pages"; onClicked: root.sidebarView="pages" }
+                        ActionButton { objectName: "sidebarOutlineTab"; tab: true; compact: true; implicitWidth: 52; text: "목차"; active: root.sidebarView==="outline"; enabled: root.hasDocument; onClicked: root.sidebarView="outline" }
                     }
                     Item { Layout.fillWidth: true }
-                    Text { text: pdf.selection.length > 1 ? pdf.selection.length + "개 선택" : root.hasDocument ? (pdf.currentPage+1) + " / " + pdf.document.count : ""; color: Theme.inkMuted; font.features: ({ "tnum": 1 }); font.pixelSize: Theme.small; font.weight: Font.Medium }
+                    Text { text: pdf.selection.length > 1 ? pdf.selection.length + "개 선택" : root.hasDocument ? (pdf.currentPage+1) + " / " + pdf.document.count : ""; color: Theme.inkMuted; font.features: ({ "tnum": 1 }); font.pixelSize: Theme.caption }
                 }
                 RowLayout {
                     visible: root.searchOpen
-                    Layout.fillWidth: true; Layout.margins: 13; spacing: 5
-                    Text { text: "문서 검색"; font.weight: Font.Bold; font.pixelSize: Theme.headline; color: Theme.ink; Layout.fillWidth: true }
-                    ActionButton { glyph: "close"; compact: true; hint: "검색 닫기"; onClicked: root.searchOpen=false }
+                    Layout.fillWidth: true; Layout.leftMargin: Theme.gapL; Layout.rightMargin: Theme.gapS; Layout.topMargin: Theme.gapS; spacing: Theme.gapXs
+                    Text { text: "문서 검색"; font.weight: Font.DemiBold; font.pixelSize: Theme.title3; color: Theme.ink; Layout.fillWidth: true }
+                    ActionButton { glyph: "close"; iconSize: 16; hint: "검색 닫기"; onClicked: root.searchOpen=false }
                 }
                 ColumnLayout {
-                    visible: root.searchOpen; Layout.fillWidth: true; Layout.leftMargin: 12; Layout.rightMargin: 12; spacing: 9
+                    visible: root.searchOpen; Layout.fillWidth: true; Layout.leftMargin: Theme.gapM; Layout.rightMargin: Theme.gapM; Layout.topMargin: Theme.gapXs; spacing: Theme.gapS
                     TextField {
                         id: searchInput; objectName: "searchInput"; Layout.fillWidth: true
                         placeholderText: "문서에서 찾기"; selectByMouse: true; font.pixelSize: Theme.body
-                        leftPadding: 30; rightPadding: 10; implicitHeight: 30; color: Theme.ink; selectionColor: Theme.selection; selectedTextColor: Theme.ink
+                        leftPadding: 32; rightPadding: 10; implicitHeight: Theme.control; color: Theme.ink; selectionColor: Theme.selection; selectedTextColor: Theme.ink
                         placeholderTextColor: Theme.inkFaint
                         background: Rectangle {
-                            radius: Theme.radius+1; color: Theme.field; border.width: searchInput.activeFocus ? 2 : Theme.hairline; border.color: searchInput.activeFocus ? Theme.focusRing : Theme.line
-                            Icon { x: 9; anchors.verticalCenter: parent.verticalCenter; name: "search"; size: 14; tone: Theme.inkMuted }
+                            radius: Theme.radius; color: Theme.field; border.width: searchInput.activeFocus ? 2 : Theme.hairline; border.color: searchInput.activeFocus ? Theme.focusRing : Theme.line
+                            Icon { x: 10; anchors.verticalCenter: parent.verticalCenter; name: "search"; size: 15; tone: Theme.inkMuted }
                         }
                         onTextEdited: { root.pendingQuery = text; searchDelay.restart(); }
                         onAccepted: { searchDelay.stop(); pdf.findNext(text,1); }
@@ -661,31 +711,31 @@ ApplicationWindow {
                         }
                     }
                     RowLayout {
-                        Layout.fillWidth: true; spacing: 2
-                        Text { Layout.fillWidth: true; text: pdf.searchCount ? (pdf.searchIndex+1)+" / "+pdf.searchCount+(pdf.searching ? " · 검색 중" : "곳") : pdf.searching ? "검색 중…" : pdf.searchQuery ? "검색 결과 없음" : "검색어를 입력하세요"; color: Theme.inkMuted; font.pixelSize: Theme.small }
-                        ActionButton { objectName: "previousSearchHit"; glyph: "up"; compact: true; hint: "이전 결과 · Shift+Enter"; enabled: pdf.searchCount>0; onClicked: pdf.findNext(searchInput.text,-1) }
-                        ActionButton { objectName: "nextSearchHit"; glyph: "down"; compact: true; hint: "다음 결과 · Enter / F3"; enabled: pdf.searchCount>0; onClicked: pdf.findNext(searchInput.text,1) }
+                        Layout.fillWidth: true; spacing: 0
+                        Text { Layout.fillWidth: true; text: pdf.searchCount ? (pdf.searchIndex+1)+" / "+pdf.searchCount+(pdf.searching ? " · 검색 중" : "곳") : pdf.searching ? "검색 중…" : pdf.searchQuery ? "검색 결과 없음" : "검색어를 입력하세요"; color: Theme.inkMuted; font.pixelSize: Theme.small; font.features: ({ "tnum": 1 }) }
+                        ActionButton { objectName: "previousSearchHit"; glyph: "up"; iconSize: 16; hint: "이전 결과 · Shift+Enter"; enabled: pdf.searchCount>0; onClicked: pdf.findNext(searchInput.text,-1) }
+                        ActionButton { objectName: "nextSearchHit"; glyph: "down"; iconSize: 16; hint: "다음 결과 · Enter / F3"; enabled: pdf.searchCount>0; onClicked: pdf.findNext(searchInput.text,1) }
                     }
                     ListView {
                         Layout.fillWidth: true; Layout.preferredHeight: Math.min(180, contentHeight); clip: true
                         model: pdf.searchResults
                         delegate: ItemDelegate {
                             required property var modelData
-                            width: ListView.view.width; height: 34
+                            width: ListView.view.width; height: 32
                             objectName: "searchResult"+modelData.page
                             highlighted: pdf.activeSearchHit.page === modelData.page
-                            contentItem: Text { text: (modelData.page+1) + "페이지  ·  " + modelData.count + "곳"; color: parent.highlighted ? Theme.inkOnAccent : Theme.ink; font.pixelSize: Theme.body; verticalAlignment: Text.AlignVCenter }
-                            background: Rectangle { radius: Theme.radius; color: parent.highlighted ? Theme.accent : parent.hovered ? Theme.hover : "transparent" }
+                            contentItem: Text { text: (modelData.page+1) + "페이지  ·  " + modelData.count + "곳"; color: parent.highlighted ? Theme.accentInk : Theme.ink; font.pixelSize: Theme.small; font.weight: parent.highlighted ? Font.Medium : Font.Normal; verticalAlignment: Text.AlignVCenter }
+                            background: Rectangle { radius: Theme.radius; color: parent.highlighted ? Theme.accentSoft : parent.hovered ? Theme.hover : "transparent"; Behavior on color { ColorAnimation { duration: Theme.listMs } } }
                             onClicked: pdf.selectSearchHit(modelData.firstHit)
                         }
                     }
-                    Rectangle { Layout.fillWidth: true; height: Theme.hairline; color: Theme.lineSoft; Layout.bottomMargin: 8 }
+                    Rectangle { Layout.fillWidth: true; height: Theme.hairline; color: Theme.lineSoft; Layout.bottomMargin: Theme.gapS }
                 }
                 ListView {
                     id: outlineList; objectName: "outlineList"
                     visible: root.sidebarView==="outline" && !root.searchOpen
                     Layout.fillWidth: true; Layout.fillHeight: true; clip: true
-                    leftMargin: 8; rightMargin: 8; bottomMargin: 12
+                    leftMargin: Theme.gapS; rightMargin: Theme.gapS; bottomMargin: Theme.gapM
                     model: root.switching ? [] : pdf.outline
                     ScrollBar.vertical: AppScrollBar { }
                     // The entry for the page being read, so the reader sees where they are.
@@ -699,41 +749,42 @@ ApplicationWindow {
                         objectName: "outlineItem"+index
                         width: outlineList.width-16; height: Math.max(32, outlineText.implicitHeight+14)
                         enabled: modelData.page>=0
-                        leftPadding: 10+Math.min(modelData.level-1,4)*14; rightPadding: 8
+                        leftPadding: 10+Math.min(modelData.level-1,4)*12; rightPadding: 8
                         contentItem: RowLayout {
                             spacing: 6
                             Text {
                                 id: outlineText; Layout.fillWidth: true; text: outlineItem.modelData.title; wrapMode: Text.Wrap; maximumLineCount: 3; elide: Text.ElideRight
-                                font.pixelSize: Theme.body; font.weight: outlineItem.index===outlineList.currentEntry || outlineItem.modelData.level===1 ? Font.Bold : Font.Normal
+                                font.pixelSize: Theme.small; font.weight: outlineItem.index===outlineList.currentEntry || outlineItem.modelData.level===1 ? Font.Medium : Font.Normal
                                 color: outlineItem.index===outlineList.currentEntry ? Theme.accentInk : outlineItem.modelData.level===1 ? Theme.ink : Theme.inkSoft
                             }
-                            Text { text: outlineItem.modelData.page>=0 ? outlineItem.modelData.page+1 : ""; font.features: ({ "tnum": 1 }); font.pixelSize: Theme.caption; color: outlineItem.index===outlineList.currentEntry ? Theme.accentInk : Theme.inkMuted; Layout.alignment: Qt.AlignTop; topPadding: 2 }
+                            Text { text: outlineItem.modelData.page>=0 ? outlineItem.modelData.page+1 : ""; font.features: ({ "tnum": 1 }); font.pixelSize: Theme.caption; color: outlineItem.index===outlineList.currentEntry ? Theme.accentInk : Theme.inkMuted; Layout.alignment: Qt.AlignTop; topPadding: 1 }
                         }
-                        // The heading being read is tinted denim, like a sidebar selection.
+                        // The heading being read sits on the selection colour.
                         background: Rectangle {
                             radius: Theme.radius
                             color: outlineItem.index===outlineList.currentEntry ? Theme.accentSoft : outlineItem.hovered ? Theme.hover : "transparent"
-                            Behavior on color { ColorAnimation { duration: Theme.fast } }
+                            Behavior on color { ColorAnimation { duration: Theme.listMs } }
                         }
                         onClicked: pdf.openOutline(index)
                     }
                     Column {
-                        visible: outlineList.count===0; anchors.centerIn: parent; width: parent.width-40; spacing: 6
-                        Text { width: parent.width; horizontalAlignment: Text.AlignHCenter; text: "목차가 없어요"; color: Theme.ink; font.pixelSize: Theme.headline; font.weight: Font.Bold }
-                        Text { width: parent.width; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.WordWrap; text: "이 PDF에는 책갈피가 들어 있지 않아요. 페이지 탭에서 미리보기로 이동할 수 있어요."; color: Theme.inkMuted; font.pixelSize: 12; lineHeight: 1.3 }
+                        visible: outlineList.count===0; anchors.centerIn: parent; width: parent.width-40; spacing: Theme.gapS
+                        Text { width: parent.width; horizontalAlignment: Text.AlignHCenter; text: "목차가 없어요"; color: Theme.ink; font.pixelSize: Theme.body; font.weight: Font.Medium }
+                        Text { width: parent.width; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.WordWrap; text: "이 PDF에는 책갈피가 들어 있지 않아요. 페이지 탭에서 미리보기로 이동할 수 있어요."; color: Theme.inkMuted; font.pixelSize: Theme.caption; lineHeight: 1.35 }
                     }
                 }
                 ListView {
                     id: thumbs; objectName: "thumbnailList"
                     visible: root.sidebarView==="pages" || root.searchOpen
                     Layout.fillWidth: true; Layout.fillHeight: true; clip: true
-                    model: root.switching ? 0 : pdf.document.count; spacing: 12; topMargin: 4; bottomMargin: 16
+                    model: root.switching ? 0 : pdf.document.count; spacing: Theme.gapXs; topMargin: Theme.gapXs; bottomMargin: Theme.gapL
                     ScrollBar.vertical: AppScrollBar { }
                     delegate: Item {
                         id: thumbCell
                         required property int index
-                        width: thumbs.width; height: 188
+                        width: thumbs.width; height: 184
                         property bool selected: pdf.selection.indexOf(index) >= 0
+                        readonly property bool current: pdf.currentPage===index
                         property bool near: !root.presenting && y+height >= thumbs.contentY-150 && y <= thumbs.contentY+thumbs.height+150
                         property string pageImage: ""
                         property string renderError: ""
@@ -754,30 +805,38 @@ ApplicationWindow {
                         Timer { interval: 700; repeat: true; running: thumbCell.near && !thumbCell.pageImage && !thumbCell.renderError; onTriggered: thumbCell.request() }
                         Rectangle {
                             id: thumbVisual
-                            anchors.horizontalCenter: parent.horizontalCenter; y: 2; width: 164; height: 163
-                            // The page being read sits on a denim-tinted rounded field, like a Finder selection.
+                            anchors.horizontalCenter: parent.horizontalCenter; y: 2; width: 172; height: 178
+                            // The page being read, and pages picked for a move, sit on
+                            // the selection colour; the page itself stays in place.
                             radius: Theme.radiusLarge
-                            color: pdf.currentPage===thumbCell.index || thumbCell.selected ? Theme.accentSoft : thumbHover.hovered ? Theme.hover : "transparent"
-                            Behavior on color { ColorAnimation { duration: Theme.fast } }
+                            color: thumbCell.current || thumbCell.selected ? Theme.accentSoft : thumbHover.hovered ? Theme.hover : "transparent"
+                            Behavior on color { ColorAnimation { duration: Theme.listMs; easing.type: Easing.OutCubic } }
                             HoverHandler { id: thumbHover }
-                            Shadow { target: thumbPaper; level: "page" }
                             Rectangle {
                                 id: thumbPaper; objectName: "thumbnailPaper"+thumbCell.index
-                                anchors.centerIn: parent; width: Math.min(132,140/thumbCell.pageRatio); height: width*thumbCell.pageRatio
-                                color: "white"; border.color: pdf.currentPage===thumbCell.index ? Theme.accent : "#14000000"
-                                border.width: pdf.currentPage===thumbCell.index ? 2 : Theme.hairline
-                                Image { objectName: "thumbnailImage"+thumbCell.index; anchors.fill: parent; anchors.margins: 1; source: thumbCell.pageImage; fillMode: Image.Stretch; cache: false; asynchronous: true; retainWhileLoading: true; smooth: true }
+                                anchors.horizontalCenter: parent.horizontalCenter; y: 10 + (140-height)/2
+                                width: Math.min(128,140/thumbCell.pageRatio); height: width*thumbCell.pageRatio
+                                color: "white"; border.color: thumbCell.current ? Theme.accent : Theme.line
+                                border.width: thumbCell.current ? 2 : Theme.hairline
+                                Behavior on border.color { ColorAnimation { duration: Theme.listMs } }
+                                Image { objectName: "thumbnailImage"+thumbCell.index; anchors.fill: parent; anchors.margins: parent.border.width; source: thumbCell.pageImage; fillMode: Image.Stretch; cache: false; asynchronous: true; retainWhileLoading: true; smooth: true }
                                 BusyIndicator { anchors.centerIn: parent; width: 20; height: 20; running: !thumbCell.pageImage && !thumbCell.renderError; visible: running }
                                 ActionButton { anchors.centerIn: parent; visible: !thumbCell.pageImage && !!thumbCell.renderError; text: "재시도"; hint: thumbCell.renderError; onClicked: pdf.retryPage(thumbCell.index,"thumb",Math.ceil(144*Screen.devicePixelRatio)) }
+                            }
+                            Text {
+                                anchors.horizontalCenter: parent.horizontalCenter; y: 156
+                                text: thumbCell.index+1; font.features: ({ "tnum": 1 }); font.pixelSize: Theme.caption
+                                font.weight: thumbCell.current ? Font.DemiBold : Font.Normal
+                                color: thumbCell.current ? Theme.accentInk : thumbCell.selected ? Theme.ink : Theme.inkMuted
                             }
                             Drag.active: dragHandler.active
                             Drag.source: thumbCell
                             Drag.hotSpot.x: 70; Drag.hotSpot.y: 80
                             opacity: dragHandler.active ? .6 : 1
                             Rectangle {
-                                visible: dragHandler.active; anchors.top: parent.top; anchors.right: parent.right; z: 10
-                                width: moveLabel.implicitWidth+12; height: moveLabel.implicitHeight+6; color: Theme.accent
-                                Text { id: moveLabel; anchors.centerIn: parent; text: root.draggedPages.length+"장 이동"; color: Theme.inkOnAccent; font.pixelSize: Theme.small }
+                                visible: dragHandler.active; anchors.top: parent.top; anchors.right: parent.right; anchors.margins: 6; z: 10
+                                width: moveLabel.implicitWidth+12; height: moveLabel.implicitHeight+6; radius: Theme.radiusSmall; color: Theme.accent
+                                Text { id: moveLabel; anchors.centerIn: parent; text: root.draggedPages.length+"장 이동"; color: Theme.inkOnAccent; font.pixelSize: Theme.caption; font.weight: Font.Medium }
                             }
                             DragHandler {
                                 id: dragHandler; target: null; enabled: root.canEdit
@@ -806,34 +865,25 @@ ApplicationWindow {
                                 }
                             }
                         }
-                        Rectangle { visible: root.dropIndex === thumbCell.index || (thumbCell.index===pdf.document.count-1 && root.dropIndex===pdf.document.count); x: 26; y: root.dropIndex===pdf.document.count ? parent.height-2 : 0; width: parent.width-52; height: 3; radius: 1.5; color: Theme.accent }
-                        // The page being read: its number on an indigo pill.
-                        Rectangle {
-                            anchors.horizontalCenter: parent.horizontalCenter; y: 169; width: Math.max(24, thumbNumber.implicitWidth+12); height: 17; radius: 8.5
-                            color: pdf.currentPage===thumbCell.index ? Theme.accent : "transparent"
-                            Behavior on color { ColorAnimation { duration: Theme.fast } }
-                            Text { id: thumbNumber; anchors.centerIn: parent; text: thumbCell.index+1; font.features: ({ "tnum": 1 }); font.pixelSize: Theme.caption; font.weight: Font.DemiBold; color: pdf.currentPage===thumbCell.index ? Theme.inkOnAccent : thumbCell.selected ? Theme.ink : Theme.inkMuted }
-                        }
+                        // Where the dragged pages will land.
+                        Rectangle { visible: root.dropIndex === thumbCell.index || (thumbCell.index===pdf.document.count-1 && root.dropIndex===pdf.document.count); x: 24; y: root.dropIndex===pdf.document.count ? parent.height-2 : -2; width: parent.width-48; height: 3; radius: 1.5; color: Theme.accent }
                     }
                 }
-                Rectangle { visible: root.sidebarView==="pages"; Layout.fillWidth: true; height: Theme.hairline; color: Theme.line }
+                Rectangle { visible: root.sidebarView==="pages" && !root.searchOpen; Layout.fillWidth: true; height: Theme.hairline; color: Theme.line }
                 ColumnLayout {
-                    visible: root.sidebarView==="pages"
-                    Layout.fillWidth: true; Layout.margins: 9; spacing: 2
+                    visible: root.sidebarView==="pages" && !root.searchOpen
+                    Layout.fillWidth: true; Layout.margins: Theme.gapS; spacing: Theme.gapXs
                     RowLayout {
                         spacing: 2; Layout.alignment: Qt.AlignHCenter
-                        ActionButton { glyph: "up"; text: ""; hint: "위로 · Alt+↑"; enabled: root.canEdit; onClicked: pdf.moveSelected(-1) }
-                        ActionButton { glyph: "down"; text: ""; hint: "아래로 · Alt+↓"; enabled: root.canEdit; onClicked: pdf.moveSelected(1) }
-                        ActionButton { glyph: "rotate"; text: ""; hint: "회전"; enabled: root.canEdit; onClicked: pdf.rotateSelected() }
-                    }
-                    RowLayout {
-                        Layout.alignment: Qt.AlignHCenter; spacing: 4
-                        ActionButton { glyph: "add"; text: "PDF 삽입"; enabled: root.canEdit; onClicked: pdf.insertPdf() }
-                        ActionButton { glyph: "delete"; text: "삭제"; enabled: root.canEdit; onClicked: pdf.deleteSelected() }
+                        ActionButton { glyph: "up"; hint: "위로 · Alt+↑"; enabled: root.canEdit; onClicked: pdf.moveSelected(-1) }
+                        ActionButton { glyph: "down"; hint: "아래로 · Alt+↓"; enabled: root.canEdit; onClicked: pdf.moveSelected(1) }
+                        ActionButton { glyph: "rotate"; hint: "회전 · Ctrl+Shift+R"; enabled: root.canEdit; onClicked: pdf.rotateSelected() }
+                        ActionButton { glyph: "add"; hint: "PDF 삽입 · 선택한 페이지 뒤에"; enabled: root.canEdit; onClicked: pdf.insertPdf() }
+                        ActionButton { glyph: "delete"; hint: "선택한 페이지 삭제"; enabled: root.canEdit; onClicked: pdf.deleteSelected() }
                     }
                 }
             }
-            Rectangle { anchors.right: parent.right; height: parent.height; width: Theme.hairline; color: Theme.line }
+            }
         }
 
         Rectangle {
@@ -843,7 +893,7 @@ ApplicationWindow {
             ListView {
                 id: pages; objectName: "pageList"; anchors.fill: parent; clip: true
                 visible: root.hasDocument
-                model: root.switching ? 0 : Math.ceil(pdf.document.count/root.pageColumns); spacing: 18; topMargin: 24; bottomMargin: 24
+                model: root.switching ? 0 : Math.ceil(pdf.document.count/root.pageColumns); spacing: Theme.gapL; topMargin: Theme.gapXl; bottomMargin: Theme.gapXl
                 cacheBuffer: Math.max(1200,height*2)
                 contentWidth: Math.max(width, (width-64)*root.zoom+64)
                 flickableDirection: Flickable.AutoFlickDirection
@@ -878,6 +928,69 @@ ApplicationWindow {
                 objectName: "pageScrollInput"; anchors.fill: parent; view: pages; visible: root.hasDocument
                 onZoomRequested: function(amount) { root.zoomBy(amount); }
             }
+            // Body-text editing tools float beside the paragraph being edited:
+            // above it, or below when there is no room, never over the text,
+            // the cursor or the resize handle.
+            Rectangle {
+                id: editBar; objectName: "inlineEditBar"
+                visible: textDialog.visible && root.hasDocument && !root.presenting
+                z: 60
+                readonly property var anchorRect: root.editAnchor()
+                width: Math.min(workspace.width-2*Theme.gapS, editColumn.implicitWidth+2*Theme.gapS)
+                height: editColumn.implicitHeight+2*Theme.gapS
+                x: anchorRect ? Math.max(Theme.gapS, Math.min(workspace.width-width-Theme.gapS, anchorRect.x)) : (workspace.width-width)/2
+                y: {
+                    if(!anchorRect) return Theme.gapS;
+                    var above=anchorRect.y-height-Theme.gapS;
+                    var below=anchorRect.y+anchorRect.h+Theme.gapS;
+                    var y=above>=Theme.gapS ? above : below;
+                    return Math.max(Theme.gapS, Math.min(workspace.height-height-Theme.gapS, y));
+                }
+                radius: Theme.radiusLarge; color: Theme.raised; border.color: Theme.line; border.width: Theme.hairline
+                // Presses on the bar itself stay here instead of committing the edit.
+                MouseArea { anchors.fill: parent; acceptedButtons: Qt.AllButtons }
+                ColumnLayout {
+                    id: editColumn; x: Theme.gapS; y: Theme.gapS; width: parent.width-2*Theme.gapS; spacing: Theme.gapS
+                    RowLayout {
+                        Layout.fillWidth: true; spacing: Theme.gapS
+                        Icon { name: "edit"; size: 16; tone: Theme.accent; Layout.leftMargin: 4 }
+                        Text { visible: workspace.width > 760; text: textDialog.targetData.mode==="replace" ? "본문 수정" : "텍스트 추가"; color: Theme.ink; font.pixelSize: Theme.small; font.weight: Font.Medium }
+                        FontPicker { id: fontChoice; controller: root.pdf; Layout.fillWidth: true; Layout.minimumWidth: 130; Layout.maximumWidth: 240; enabled: !pdf.busy }
+                        ActionButton { text: "글꼴 파일"; compact: true; enabled: !pdf.busy; onClicked: pdf.chooseFont() }
+                        TextField {
+                            id: sizeInput; objectName: "fontSizeInput"; Layout.preferredWidth: 58; implicitHeight: Theme.control; text: textDialog.fontSize.toFixed(2)
+                            validator: DoubleValidator { bottom:4; top:200 } selectByMouse: true; font.pixelSize: Theme.small; font.features: ({ "tnum": 1 }); color: Theme.ink
+                            horizontalAlignment: TextInput.AlignRight; rightPadding: 8; leftPadding: 6; selectionColor: Theme.selection; selectedTextColor: Theme.ink
+                            background: Rectangle { radius: Theme.radius; color: Theme.field; border.width: sizeInput.activeFocus ? 2 : Theme.hairline; border.color: sizeInput.activeFocus ? Theme.focusRing : Theme.line }
+                            onTextEdited: if(acceptableInput) {textDialog.fontSize=Number(text);pdf.liveEditor.setSize(Number(text));}
+                        }
+                        Text { text: "pt"; color: Theme.inkMuted; font.pixelSize: Theme.caption }
+                        Text { visible: textDialog.targetData.mode!=="replace"; text: "높이"; color: Theme.inkMuted; font.pixelSize: Theme.caption }
+                        TextField {
+                            id: heightInput; visible: textDialog.targetData.mode!=="replace"; objectName: "inlineHeightInput"; Layout.preferredWidth: 58; implicitHeight: Theme.control; text: textDialog.areaHeight.toFixed(0)
+                            validator: DoubleValidator { bottom:5; top:20000 } selectByMouse: true; font.pixelSize: Theme.small; color: Theme.ink
+                            horizontalAlignment: TextInput.AlignRight; rightPadding: 8; leftPadding: 6; selectionColor: Theme.selection; selectedTextColor: Theme.ink
+                            background: Rectangle { radius: Theme.radius; color: Theme.field; border.width: heightInput.activeFocus ? 2 : Theme.hairline; border.color: heightInput.activeFocus ? Theme.focusRing : Theme.line }
+                            onTextEdited: if(acceptableInput) textDialog.areaHeight=Number(text)
+                        }
+                        Item { Layout.fillWidth: true; Layout.minimumWidth: 0 }
+                        ActionButton { objectName: "cancelTextButton"; text: "취소"; outlined: true; compact: true; hint: "Esc"; enabled: !pdf.busy; onClicked: {root.closeAfterEdit=false;textDialog.close();} }
+                        ActionButton { objectName: "applyTextButton"; text: "적용"; primary: true; compact: true; enabled: !pdf.busy && (textDialog.targetData.mode!=="replace" || pdf.liveEditor.canApply); onClicked: pdf.applyText(textDialog.targetData,textDialog.text,textDialog.fontSize,textDialog.areaHeight) }
+                    }
+                    // What stops this edit from applying (a missing glyph, the font still loading).
+                    Rectangle {
+                        visible: textDialog.targetData.mode==="replace" && pdf.liveEditor.status.length>0
+                        Layout.fillWidth: true; implicitHeight: statusRow.implicitHeight+2*Theme.gapS; radius: Theme.radius; color: Theme.warnSurface
+                        RowLayout {
+                            id: statusRow; x: Theme.gapM; y: Theme.gapS; width: parent.width-Theme.gapM-Theme.gapS; spacing: Theme.gapS
+                            Text { id: statusLabel; objectName: "inlineFontStatus"; Layout.fillWidth: true; text: pdf.liveEditor.status; wrapMode: Text.WordWrap; color: Theme.warnInk; font.pixelSize: Theme.small; lineHeight: 1.3 }
+                            ActionButton { objectName: "useMissingFont"; visible: pdf.liveEditor.canUseFallback; text: "없는 글자만 대체"; compact: true; outlined: true; onClicked: pdf.liveEditor.useFallback() }
+                            ActionButton { objectName: "retryFont"; visible: !pdf.liveEditor.loading && !pdf.liveEditor.canApply; text: "다시 시도"; compact: true; outlined: true; onClicked: pdf.liveEditor.retry() }
+                        }
+                    }
+                }
+            }
+            Shadow { target: editBar; level: "medium"; z: 59 }
             // Focus reading controls: appear when the pointer nears the bottom edge.
             Item {
                 id: focusControls; objectName: "focusControls"
@@ -889,44 +1002,44 @@ ApplicationWindow {
                     id: focusBar; objectName: "focusBar"
                     property bool hovered: barHover.hovered
                     HoverHandler { id: barHover }
-                    anchors.horizontalCenter: parent.horizontalCenter; anchors.bottom: parent.bottom; anchors.bottomMargin: 22
-                    width: focusRow.implicitWidth+32; height: 50; radius: Theme.radiusLarge+3
+                    anchors.horizontalCenter: parent.horizontalCenter; anchors.bottom: parent.bottom; anchors.bottomMargin: Theme.gapXl
+                    width: focusRow.implicitWidth+32; height: 48; radius: Theme.radiusDialog
                     color: Theme.hud
                     opacity: focusControls.revealed ? 1 : 0; visible: opacity>0
-                    Behavior on opacity { NumberAnimation { duration: Theme.smooth; easing.type: Easing.OutCubic } }
+                    Behavior on opacity { NumberAnimation { duration: focusControls.revealed ? Theme.noticeInMs : Theme.noticeOutMs; easing.type: Easing.OutCubic } }
                     readonly property color ink: Theme.hudInk
                     RowLayout {
-                        id: focusRow; anchors.centerIn: parent; spacing: 12
-                        Text { text: (pdf.currentPage+1)+" / "+pdf.document.count; color: focusBar.ink; font.features: ({ "tnum": 1 }); font.pixelSize: Theme.body; font.weight: Font.DemiBold; Layout.minimumWidth: 58; horizontalAlignment: Text.AlignHCenter }
-                        Rectangle { width: Theme.hairline; height: 22; color: "#33ffffff" }
-                        Text { text: "폭"; color: "#c9bfb2"; font.pixelSize: Theme.small }
+                        id: focusRow; anchors.centerIn: parent; spacing: Theme.gapM
+                        Text { text: (pdf.currentPage+1)+" / "+pdf.document.count; color: focusBar.ink; font.features: ({ "tnum": 1 }); font.pixelSize: Theme.body; font.weight: Font.Medium; Layout.minimumWidth: 58; horizontalAlignment: Text.AlignHCenter }
+                        Rectangle { width: Theme.hairline; height: 20; color: "#33ffffff" }
+                        Text { text: "폭"; color: "#b8bdc4"; font.pixelSize: Theme.small }
                         AppSlider {
                             id: focusWidthSlider; objectName: "focusWidthSlider"; implicitWidth: 150
                             from: .3; to: 1; value: root.zoom; stepSize: .01
                             onMoved: root.zoom=value
                         }
-                        Rectangle { width: Theme.hairline; height: 22; color: "#33ffffff" }
-                        Text { text: "배경"; color: "#c9bfb2"; font.pixelSize: Theme.small }
+                        Rectangle { width: Theme.hairline; height: 20; color: "#33ffffff" }
+                        Text { text: "배경"; color: "#b8bdc4"; font.pixelSize: Theme.small }
                         Repeater {
                             model: [{key:"dark",label:"어둡게"},{key:"gray",label:"회색"},{key:"paper",label:"종이"}]
                             delegate: Rectangle {
                                 required property var modelData
                                 objectName: "focusTone_"+modelData.key
                                 width: 20; height: 20; radius: 10; color: root.focusTones[modelData.key]
-                                border.width: root.focusTone===modelData.key ? 2 : Theme.hairline; border.color: root.focusTone===modelData.key ? "#8ea9d8" : "#66ffffff"
-                                MouseArea { id: toneArea; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.focusTone=parent.modelData.key }
+                                border.width: root.focusTone===modelData.key ? 2 : Theme.hairline; border.color: root.focusTone===modelData.key ? "#8aaac6" : "#66ffffff"
+                                MouseArea { id: toneArea; anchors.fill: parent; anchors.margins: -6; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.focusTone=parent.modelData.key }
                                 ToolTip.visible: toneArea.containsMouse; ToolTip.delay: 400; ToolTip.text: modelData.label
                             }
                         }
-                        Rectangle { width: Theme.hairline; height: 22; color: "#33ffffff" }
+                        Rectangle { width: Theme.hairline; height: 20; color: "#33ffffff" }
                         ActionButton { objectName: "endFocusButton"; compact: true; hud: true; text: "나가기"; hint: "집중 읽기 끝내기 · Esc"; onClicked: root.endFocusReading() }
                     }
                 }
                 Text {
-                    anchors.horizontalCenter: parent.horizontalCenter; anchors.top: parent.top; anchors.topMargin: 18
+                    anchors.horizontalCenter: parent.horizontalCenter; anchors.top: parent.top; anchors.topMargin: Theme.gapL
                     text: "집중 읽기 · 아래쪽에 마우스를 올리면 조절 막대가 나와요 · Esc로 나가기"
-                    color: root.focusTone==="paper" ? "#7a6d5f" : "#b3a899"; font.pixelSize: Theme.small
-                    opacity: focusIntro.running ? 1 : 0; Behavior on opacity { NumberAnimation { duration: 300 } }
+                    color: root.focusTone==="paper" ? "#62666c" : "#aab0b7"; font.pixelSize: Theme.small
+                    opacity: focusIntro.running ? 1 : 0; Behavior on opacity { NumberAnimation { duration: focusIntro.running ? Theme.noticeInMs : Theme.noticeOutMs } }
                 }
             }
             Flickable {
@@ -936,68 +1049,85 @@ ApplicationWindow {
                 boundsBehavior: Flickable.StopAtBounds
                 readonly property var recentFiles: typeof library !== "undefined" && library.enabled ? library.recent : []
                 ColumnLayout {
-                    id: startColumn; width: Math.min(560, startScreen.width-80)
-                    x: (startScreen.width-width)/2; y: Math.max(28,(startScreen.height-implicitHeight)/2-20); spacing: 0
-                    // The character hops and waves hello when the screen appears; click it for another wave.
-                    WavingCharacter {
-                        id: startArt; objectName: "startCharacter"; Layout.alignment: Qt.AlignHCenter
-                        Layout.preferredHeight: Math.max(180, Math.min(300, startScreen.height*.36)); Layout.preferredWidth: Layout.preferredHeight/ratio
+                    id: startColumn; width: Math.min(520, startScreen.width-80)
+                    x: (startScreen.width-width)/2; y: Math.max(Theme.gapXl,(startScreen.height-implicitHeight)/2-24); spacing: 0
+                    // The mark appears once when the app starts on an empty window:
+                    // 360 ms, fading in from 98 %. No splash, nothing waits for it.
+                    BrandMark {
+                        id: startLogo; objectName: "startLogo"; size: 88; Layout.alignment: Qt.AlignHCenter
+                        opacity: root.introPlayed ? 1 : 0; scale: root.introPlayed ? 1 : .98
+                        ParallelAnimation {
+                            id: logoIntro
+                            NumberAnimation { target: startLogo; property: "opacity"; to: 1; duration: Theme.introMs; easing.type: Easing.OutCubic }
+                            NumberAnimation { target: startLogo; property: "scale"; to: 1; duration: Theme.introMs; easing.type: Easing.OutCubic }
+                            onFinished: root.introPlayed=true
+                        }
+                        Component.onCompleted: {
+                            if(root.introPlayed) return;
+                            if(Theme.reduceMotion || root.hasDocument || root.externalOpenPending) { root.introPlayed=true; return; }
+                            logoIntro.start();
+                        }
+                        // A file arriving to be opened skips the rest of the fade.
+                        Connections {
+                            target: root
+                            function onExternalOpenPendingChanged() { if(root.externalOpenPending && logoIntro.running) logoIntro.complete(); }
+                            function onHasDocumentChanged() { if(root.hasDocument && logoIntro.running) logoIntro.complete(); }
+                        }
                     }
                     Text {
-                        objectName: "startWordmark"; Layout.alignment: Qt.AlignHCenter; Layout.topMargin: 18
-                        textFormat: Text.StyledText; text: "윤<font color='" + Theme.indigo + "'>DF</font>"
-                        font.pixelSize: Theme.display; font.weight: Font.Bold; font.letterSpacing: -.8; color: Theme.ink
+                        objectName: "startWordmark"; Layout.alignment: Qt.AlignHCenter; Layout.topMargin: Theme.gapXl
+                        text: "윤DF"; font.pixelSize: Theme.display; font.weight: Font.DemiBold; font.letterSpacing: -.4; color: Theme.ink
                     }
                     Text {
-                        Layout.alignment: Qt.AlignHCenter; Layout.topMargin: 6; text: "읽고, 적고, 고치는 PDF 작업실"
+                        Layout.alignment: Qt.AlignHCenter; Layout.topMargin: Theme.gapS; text: "읽고, 적고, 고치는 PDF 작업실"
                         font.pixelSize: Theme.headline; color: Theme.inkMuted
                     }
                     RowLayout {
-                        Layout.alignment: Qt.AlignHCenter; spacing: 10; Layout.topMargin: 26
-                        ActionButton { glyph: "open"; text: "PDF 열기"; primary: true; implicitWidth: 138; implicitHeight: 38; font.pixelSize: Theme.callout; enabled: !pdf.busy; onClicked: pdf.chooseOpen() }
-                        ActionButton { glyph: "merge"; text: "PDF 결합"; outlined: true; implicitWidth: 138; implicitHeight: 38; font.pixelSize: Theme.callout; enabled: !pdf.busy; onClicked: pdf.showMerge() }
+                        Layout.alignment: Qt.AlignHCenter; spacing: Theme.gapS; Layout.topMargin: Theme.gapXl+Theme.gapS
+                        ActionButton { objectName: "startOpenButton"; glyph: "open"; text: "PDF 열기"; primary: true; implicitWidth: 132; implicitHeight: 36; enabled: !pdf.busy; onClicked: pdf.chooseOpen() }
+                        ActionButton { objectName: "startMergeButton"; glyph: "merge"; text: "PDF 결합"; outlined: true; implicitWidth: 132; implicitHeight: 36; enabled: !pdf.busy; onClicked: pdf.showMerge() }
                     }
                     RowLayout {
-                        visible: startScreen.recentFiles.length>0; Layout.fillWidth: true; Layout.topMargin: 38; Layout.bottomMargin: 8
-                        Text { text: "최근 문서"; font.pixelSize: Theme.body; font.weight: Font.Bold; color: Theme.inkMuted; Layout.leftMargin: 4; Layout.fillWidth: true }
+                        visible: startScreen.recentFiles.length>0; Layout.fillWidth: true; Layout.topMargin: 40; Layout.bottomMargin: Theme.gapS
+                        Text { text: "최근 문서"; font.pixelSize: Theme.small; font.weight: Font.DemiBold; color: Theme.inkMuted; Layout.leftMargin: Theme.gapXs; Layout.fillWidth: true }
                         ActionButton { objectName: "clearRecentButton"; compact: true; text: "목록 지우기"; font.pixelSize: Theme.small; onClicked: library.clear() }
                     }
-                    // Recent documents as one grouped list, like a macOS settings pane.
-                    Block {
+                    // Recent documents as one grouped list with a hairline edge.
+                    Rectangle {
                         visible: startScreen.recentFiles.length>0
-                        Layout.fillWidth: true; Layout.preferredHeight: recentColumn.implicitHeight+12; shadow: "medium"
+                        Layout.fillWidth: true; Layout.preferredHeight: recentColumn.implicitHeight+2*Theme.gapXs
+                        radius: Theme.radiusLarge; color: Theme.raised; border.color: Theme.line; border.width: Theme.hairline
                         Column {
-                            id: recentColumn; x: 6; y: 6; width: parent.width-12; spacing: 0
+                            id: recentColumn; x: Theme.gapXs; y: Theme.gapXs; width: parent.width-2*Theme.gapXs; spacing: 0
                             Repeater {
                                 model: startScreen.recentFiles
                                 delegate: ItemDelegate {
                                     id: recentRow; required property var modelData; required property int index
                                     objectName: "recentFile"+index
-                                    width: recentColumn.width; height: 56; padding: 0
+                                    width: recentColumn.width; height: 52; padding: 0
                                     enabled: pdf && !pdf.busy
                                     ToolTip.visible: hovered; ToolTip.delay: 800; ToolTip.text: modelData.path
                                     background: Item {
-                                        Rectangle { anchors.fill: parent; radius: Theme.radius+1; color: recentRow.down ? Theme.pressed : recentRow.hovered ? Theme.accentSoft : "transparent"; Behavior on color { ColorAnimation { duration: Theme.fast } } }
-                                        Rectangle { visible: recentRow.index < startScreen.recentFiles.length-1 && !recentRow.hovered; x: 58; anchors.bottom: parent.bottom; width: parent.width-70; height: Theme.hairline; color: Theme.lineSoft }
+                                        Rectangle { anchors.fill: parent; radius: Theme.radius; color: recentRow.down ? Theme.pressed : recentRow.hovered ? Theme.hover : "transparent"; Behavior on color { ColorAnimation { duration: Theme.hoverMs } } }
+                                        Rectangle { visible: recentRow.index < startScreen.recentFiles.length-1; x: 56; anchors.bottom: parent.bottom; width: parent.width-68; height: Theme.hairline; color: Theme.lineSoft }
                                     }
                                     contentItem: RowLayout {
-                                        spacing: 12
-                                        // A small leather-brown document tag.
+                                        spacing: Theme.gapM
                                         Rectangle {
-                                            Layout.leftMargin: 10; Layout.preferredWidth: 34; Layout.preferredHeight: 40; radius: Theme.radiusSmall
-                                            color: Theme.leatherSoft; border.color: Theme.dark ? "#4d3a2b" : "#e0cdb3"; border.width: Theme.hairline
-                                            Text { anchors.centerIn: parent; text: "PDF"; font.pixelSize: 9; font.weight: Font.Bold; font.letterSpacing: .5; color: Theme.leather }
+                                            Layout.leftMargin: Theme.gapM; Layout.preferredWidth: 30; Layout.preferredHeight: 36; radius: Theme.radiusSmall
+                                            color: Theme.canvas; border.color: Theme.line; border.width: Theme.hairline
+                                            Text { anchors.centerIn: parent; text: "PDF"; font.pixelSize: 9; font.weight: Font.DemiBold; font.letterSpacing: .4; color: Theme.inkMuted }
                                         }
                                         ColumnLayout {
-                                            Layout.fillWidth: true; spacing: 3
-                                            Text { Layout.fillWidth: true; text: recentRow.modelData.name; elide: Text.ElideMiddle; font.pixelSize: Theme.callout; font.weight: Font.DemiBold; color: recentRow.modelData.exists ? Theme.ink : Theme.inkMuted }
+                                            Layout.fillWidth: true; spacing: 2
+                                            Text { Layout.fillWidth: true; text: recentRow.modelData.name; elide: Text.ElideMiddle; font.pixelSize: Theme.body; font.weight: Font.Medium; color: recentRow.modelData.exists ? Theme.ink : Theme.inkMuted }
                                             Text {
                                                 Layout.fillWidth: true; elide: Text.ElideLeft; font.pixelSize: Theme.caption; color: Theme.inkMuted
                                                 text: !recentRow.modelData.exists ? "파일을 찾을 수 없어요 · " + recentRow.modelData.path
                                                     : (recentRow.modelData.page>0 ? (recentRow.modelData.page+1)+"페이지까지 읽음 · " : "") + recentRow.modelData.path
                                             }
                                         }
-                                        ActionButton { glyph: "close"; compact: true; Layout.rightMargin: 8; hint: "목록에서 빼기"; opacity: recentRow.hovered || hovered ? 1 : 0; onClicked: library.forget(recentRow.modelData.path) }
+                                        ActionButton { glyph: "close"; iconSize: 14; Layout.rightMargin: Theme.gapXs; hint: "목록에서 빼기"; opacity: recentRow.hovered || hovered ? 1 : 0; onClicked: library.forget(recentRow.modelData.path) }
                                     }
                                     onClicked: root.tabWorkspace ? root.tabWorkspace.openRecent(modelData.path) : pdf.openPath(modelData.path)
                                 }
@@ -1012,40 +1142,47 @@ ApplicationWindow {
                 onDropped: function(drop) { if (drop.hasUrls) { if(root.tabWorkspace) root.tabWorkspace.openPaths(drop.urls); else if(drop.urls.length) pdf.openPath(drop.urls[0]); } }
             }
         }
-        ColumnLayout {
+        // Right · the comment list, 300 px. The page area narrows to make room
+        // instead of being covered, in one step.
+        SidePanel {
             id: commentsDock; objectName: "commentsDock"
-            visible: (root.commentsOpen || annotationEditor.visible) && root.hasDocument && !root.focusReading
-            Layout.preferredWidth: 350; Layout.minimumWidth: 300; Layout.maximumWidth: 350; Layout.fillWidth: false; Layout.fillHeight: true; spacing: 0
+            open: (root.commentsOpen || annotationEditor.visible) && root.hasDocument && !root.focusReading; fromLeft: false
+            Layout.preferredWidth: Theme.commentsWidth; Layout.minimumWidth: 280; Layout.maximumWidth: 320; Layout.fillWidth: false; Layout.fillHeight: true
             CommentsPanel {
                 id: commentsPanel
+                anchors.fill: parent
                 controller: root.pdf; draft: annotationEditor; activeTool: root.tool; allowActions: !textDialog.visible
-                Layout.fillWidth: true; Layout.fillHeight: true
                 onToolRequested: function(tool) { if(tool==="closeComments") root.closeComments(); else root.useTool(tool); }
             }
         }
-        Rectangle {
-            visible: root.workspaceMode === "edit" && root.hasDocument && !root.focusReading
-            Layout.preferredWidth: 232; Layout.fillHeight: true; color: Theme.surface
-            Rectangle { width: Theme.hairline; height: parent.height; color: Theme.lineSoft; z: 5 }
-            Item {
-                id: editHeader; width: parent.width; height: 56
-                Text { x: 18; anchors.verticalCenter: parent.verticalCenter; text: "편집"; font.pixelSize: Theme.title3; font.weight: Font.Bold; color: Theme.ink }
-            }
-            ColumnLayout {
-                anchors.fill: parent; anchors.leftMargin: 12; anchors.rightMargin: 12; anchors.bottomMargin: 14; anchors.topMargin: editHeader.height+2; spacing: 2
-                PanelLabel { text: "내용" }
-                ActionButton { objectName: "editTextButton"; Layout.fillWidth: true; leftAligned: true; glyph: "edit"; text: "본문 수정"; active: root.tool === "editText"; enabled: root.canEdit; onClicked: root.useTool("editText") }
-                ActionButton { Layout.fillWidth: true; leftAligned: true; glyph: "text"; text: "텍스트 추가"; active: root.tool === "addText"; enabled: root.canEdit; onClicked: root.useTool("addText") }
-                ActionButton { Layout.fillWidth: true; leftAligned: true; glyph: "image"; objectName: "insertImageButton"; text: "이미지 삽입"; active: false; enabled: root.canEdit; onClicked: { root.useTool("imageMove"); pdf.chooseImage(); } }
-                ActionButton { objectName: "moveImageButton"; Layout.fillWidth: true; leftAligned: true; glyph: "hand"; text: "이미지 이동·크기"; active: root.tool==="imageMove"; enabled: root.canEdit; onClicked: root.useTool("imageMove") }
-                PanelLabel { text: "주석"; Layout.topMargin: 14 }
-                ActionButton { Layout.fillWidth: true; leftAligned: true; glyph: "highlight"; text: "형광펜"; active: root.tool === "highlight"; enabled: root.canAnnotate; onClicked: root.useTool("highlight") }
-                ActionButton { Layout.fillWidth: true; leftAligned: true; glyph: "note"; text: "메모"; active: root.tool === "note"; enabled: root.canAnnotate; onClicked: root.useTool("note") }
-                Rectangle { Layout.fillWidth: true; height: Theme.hairline; color: Theme.lineSoft; Layout.topMargin: 12; Layout.bottomMargin: 8; Layout.leftMargin: 6; Layout.rightMargin: 6 }
-                ActionButton { Layout.fillWidth: true; leftAligned: true; glyph: "undo"; text: "되돌리기"; hint: "Ctrl+Z"; enabled: (root.canEdit || root.canAnnotate) && pdf.document.canUndo; onClicked: pdf.undo() }
-                ActionButton { Layout.fillWidth: true; leftAligned: true; glyph: "redo"; text: "다시 실행"; hint: "Ctrl+Shift+Z"; enabled: (root.canEdit || root.canAnnotate) && pdf.document.canRedo; onClicked: pdf.redo() }
-                Item { Layout.fillHeight: true }
-                Text { Layout.fillWidth: true; Layout.leftMargin: 6; text: "저장하면 변경 사항이 PDF에 반영됩니다."; wrapMode: Text.WordWrap; font.pixelSize: Theme.caption; lineHeight: 1.3; color: Theme.inkFaint }
+        // Right · editing tools.
+        SidePanel {
+            objectName: "editPanel"
+            open: root.workspaceMode === "edit" && root.hasDocument && !root.focusReading; fromLeft: false
+            Layout.preferredWidth: 232; Layout.fillHeight: true
+            Rectangle {
+                anchors.fill: parent; color: Theme.surface
+                Rectangle { width: Theme.hairline; height: parent.height; color: Theme.line; z: 5 }
+                Item {
+                    id: editHeader; width: parent.width; height: 52
+                    Text { x: Theme.gapL; anchors.verticalCenter: parent.verticalCenter; text: "편집"; font.pixelSize: Theme.title3; font.weight: Font.DemiBold; color: Theme.ink }
+                }
+                ColumnLayout {
+                    anchors.fill: parent; anchors.leftMargin: Theme.gapS; anchors.rightMargin: Theme.gapS; anchors.bottomMargin: Theme.gapL; anchors.topMargin: editHeader.height; spacing: 2
+                    PanelLabel { text: "내용" }
+                    ActionButton { objectName: "editTextButton"; Layout.fillWidth: true; leftAligned: true; glyph: "edit"; text: "본문 수정"; active: root.tool === "editText"; enabled: root.canEdit; onClicked: root.useTool("editText") }
+                    ActionButton { Layout.fillWidth: true; leftAligned: true; glyph: "text"; text: "텍스트 추가"; active: root.tool === "addText"; enabled: root.canEdit; onClicked: root.useTool("addText") }
+                    ActionButton { Layout.fillWidth: true; leftAligned: true; glyph: "image"; objectName: "insertImageButton"; text: "이미지 삽입"; active: false; enabled: root.canEdit; onClicked: { root.useTool("imageMove"); pdf.chooseImage(); } }
+                    ActionButton { objectName: "moveImageButton"; Layout.fillWidth: true; leftAligned: true; glyph: "hand"; text: "이미지 이동·크기"; active: root.tool==="imageMove"; enabled: root.canEdit; onClicked: root.useTool("imageMove") }
+                    PanelLabel { text: "주석"; Layout.topMargin: Theme.gapL }
+                    ActionButton { Layout.fillWidth: true; leftAligned: true; glyph: "highlight"; text: "형광펜"; active: root.tool === "highlight"; enabled: root.canAnnotate; onClicked: root.useTool("highlight") }
+                    ActionButton { Layout.fillWidth: true; leftAligned: true; glyph: "note"; text: "메모"; active: root.tool === "note"; enabled: root.canAnnotate; onClicked: root.useTool("note") }
+                    Rectangle { Layout.fillWidth: true; height: Theme.hairline; color: Theme.lineSoft; Layout.topMargin: Theme.gapM; Layout.bottomMargin: Theme.gapS; Layout.leftMargin: Theme.gapS; Layout.rightMargin: Theme.gapS }
+                    ActionButton { Layout.fillWidth: true; leftAligned: true; glyph: "undo"; text: "되돌리기"; shortcutText: "Ctrl+Z"; enabled: (root.canEdit || root.canAnnotate) && pdf.document.canUndo; onClicked: pdf.undo() }
+                    ActionButton { Layout.fillWidth: true; leftAligned: true; glyph: "redo"; text: "다시 실행"; shortcutText: "Ctrl+Shift+Z"; enabled: (root.canEdit || root.canAnnotate) && pdf.document.canRedo; onClicked: pdf.redo() }
+                    Item { Layout.fillHeight: true }
+                    Text { Layout.fillWidth: true; Layout.leftMargin: Theme.gapS; text: "저장하면 변경 사항이 PDF에 반영됩니다."; wrapMode: Text.WordWrap; font.pixelSize: Theme.caption; lineHeight: 1.35; color: Theme.inkMuted }
+                }
             }
         }
     }
@@ -1053,20 +1190,25 @@ ApplicationWindow {
     footer: Rectangle {
         objectName: "readerFooter"; visible: !root.presenting && !root.focusReading
         height: 32; color: Theme.chrome
-        Rectangle { width: parent.width; height: Theme.hairline; color: Theme.lineSoft }
+        Rectangle { width: parent.width; height: Theme.hairline; color: Theme.line }
         RowLayout {
-            anchors.fill: parent; anchors.leftMargin: 14; anchors.rightMargin: 12; spacing: 8
+            anchors.fill: parent; anchors.leftMargin: Theme.gapL; anchors.rightMargin: Theme.gapS; spacing: Theme.gapS
             BusyIndicator { running: pdf.busy || pdf.ocrBusy; visible: running; implicitWidth: 16; implicitHeight: 16 }
-            Text { text: pdf.ocrBusy ? pdf.ocrProgress : pdf.status; elide: Text.ElideRight; Layout.fillWidth: true; color: Theme.inkMuted; font.pixelSize: Theme.small }
-            ActionButton { visible: pdf.ocrBusy; text: "OCR 취소"; compact: true; outlined: true; implicitHeight: 24; onClicked: pdf.cancelOcr() }
+            // The latest result (saved, failed, selected…) fades in once it is known.
+            Text {
+                id: statusText; objectName: "statusText"; text: pdf.ocrBusy ? pdf.ocrProgress : pdf.status; elide: Text.ElideRight; Layout.fillWidth: true; color: Theme.inkMuted; font.pixelSize: Theme.small
+                onTextChanged: { statusFade.stop(); if(Theme.noticeInMs>0 && statusText.text.length) { statusText.opacity=0; statusFade.start(); } else statusText.opacity=1; }
+                NumberAnimation { id: statusFade; target: statusText; property: "opacity"; to: 1; duration: Theme.noticeInMs; easing.type: Easing.OutCubic }
+            }
+            ActionButton { visible: pdf.ocrBusy; text: "OCR 취소"; compact: true; outlined: true; implicitHeight: 26; onClicked: pdf.cancelOcr() }
             RowLayout {
-                visible: root.hasDocument; spacing: 4
-                ActionButton { glyph: "left"; hint: "이전 페이지 · ← / ↑ / Page Up"; compact: true; implicitWidth: 26; implicitHeight: 24; enabled: pdf.currentPage>0; onClicked: root.turnPage(-1) }
-                TextField { id: pageInput; objectName: "pageNumberInput"; text: pdf.currentPage+1; Layout.preferredWidth: 46; Layout.preferredHeight: 22; horizontalAlignment: Text.AlignHCenter; font.features: ({ "tnum": 1 }); font.pixelSize: Theme.small; selectByMouse: true; color: Theme.ink
+                visible: root.hasDocument; spacing: 2
+                ActionButton { glyph: "left"; iconSize: 16; hint: "이전 페이지 · ← / ↑ / Page Up"; implicitWidth: 28; implicitHeight: 28; enabled: pdf.currentPage>0; onClicked: root.turnPage(-1) }
+                TextField { id: pageInput; objectName: "pageNumberInput"; text: pdf.currentPage+1; Layout.preferredWidth: 46; Layout.preferredHeight: 24; horizontalAlignment: Text.AlignHCenter; font.features: ({ "tnum": 1 }); font.pixelSize: Theme.small; selectByMouse: true; color: Theme.ink
                     selectionColor: Theme.selection; selectedTextColor: Theme.ink; topPadding: 0; bottomPadding: 0
                     background: Rectangle { radius: Theme.radiusSmall; color: Theme.field; border.width: pageInput.activeFocus ? 2 : Theme.hairline; border.color: pageInput.activeFocus ? Theme.focusRing : Theme.line } validator: IntValidator { bottom: 1; top: Math.max(1,pdf.document.count) } onAccepted: { root.goPage(parseInt(text)-1); pages.forceActiveFocus(); } }
-                Text { text: "/ " + pdf.document.count; color: Theme.inkMuted; font.features: ({ "tnum": 1 }); font.pixelSize: Theme.small }
-                ActionButton { glyph: "right"; implicitWidth: 26; implicitHeight: 24; hint: "다음 페이지 · → / ↓ / Page Down / Space"; compact: true; enabled: pdf.currentPage<pdf.document.count-1; onClicked: root.turnPage(1) }
+                Text { text: "/ " + pdf.document.count; color: Theme.inkMuted; font.features: ({ "tnum": 1 }); font.pixelSize: Theme.small; Layout.leftMargin: 2; Layout.rightMargin: 2 }
+                ActionButton { glyph: "right"; iconSize: 16; implicitWidth: 28; implicitHeight: 28; hint: "다음 페이지 · → / ↓ / Page Down / Space"; enabled: pdf.currentPage<pdf.document.count-1; onClicked: root.turnPage(1) }
             }
         }
     }
@@ -1075,11 +1217,11 @@ ApplicationWindow {
 
     // Section label in side panels, like a macOS sidebar heading.
     component PanelLabel: Text {
-        Layout.leftMargin: 8; Layout.bottomMargin: 2; Layout.topMargin: 4
-        font.pixelSize: Theme.caption; font.weight: Font.Bold; color: Theme.inkMuted
+        Layout.leftMargin: Theme.gapS; Layout.bottomMargin: Theme.gapXs; Layout.topMargin: Theme.gapXs
+        font.pixelSize: Theme.caption; font.weight: Font.DemiBold; color: Theme.inkMuted
     }
     // A short vertical hairline between toolbar groups.
-    component ToolbarRule: Rectangle { Layout.preferredWidth: Theme.hairline; Layout.preferredHeight: 18; Layout.leftMargin: 6; Layout.rightMargin: 6; color: Theme.line }
+    component ToolbarRule: Rectangle { Layout.preferredWidth: Theme.hairline; Layout.preferredHeight: 20; Layout.leftMargin: Theme.gapXs; Layout.rightMargin: Theme.gapXs; color: Theme.line }
 
     component CommentMark: Item {
         property var annotation: null
@@ -1139,7 +1281,7 @@ ApplicationWindow {
                         width: pageCell.pageWidth; height: width * pageCell.ratio
                         color: "white"
                         Image { anchors.fill: parent; source: pageCell.imageUrl; fillMode: Image.Stretch; cache: false; asynchronous: true; retainWhileLoading: true; smooth: true }
-                        Text { visible: pageCell.imageUrl === ""; anchors.centerIn: parent; text: pageCell.renderError ? "페이지를 표시하지 못했어요." : "페이지 불러오는 중…"; color: "#8a8a8a"; font.pixelSize: 14 }
+                        Text { visible: pageCell.imageUrl === ""; anchors.centerIn: parent; text: pageCell.renderError ? "페이지를 표시하지 못했어요." : "페이지 불러오는 중…"; color: "#8a8f96"; font.pixelSize: Theme.body }
                         ActionButton { anchors.centerIn: parent; anchors.verticalCenterOffset: 40; visible: !pageCell.imageUrl && !!pageCell.renderError; text: "다시 불러오기"; outlined: true; z: 20; hint: pageCell.renderError; onClicked: pdf.retryPage(pageCell.index,"main",Math.ceil(pageCell.pageWidth*Screen.devicePixelRatio)) }
                         Repeater {
                             model: root.tool === "editText" && !textDialog.visible ? pageCell.pageBlocks : []
@@ -1150,8 +1292,8 @@ ApplicationWindow {
                                 x: modelData.displayRect[0]*scale; y: modelData.displayRect[1]*scale
                                 width: (modelData.displayRect[2]-modelData.displayRect[0])*scale
                                 height: (modelData.displayRect[3]-modelData.displayRect[1])*scale
-                                radius: 2; color: blockMouse.containsMouse ? "#1434507f" : "transparent"
-                                border.color: blockMouse.containsMouse ? Theme.pageMark : "#6634507f"; border.width: blockMouse.containsMouse ? 2 : 1
+                                radius: 2; color: blockMouse.containsMouse ? "#14466985" : "transparent"
+                                border.color: blockMouse.containsMouse ? Theme.pageMark : "#66466985"; border.width: blockMouse.containsMouse ? 2 : 1
                                 MouseArea { id: blockMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.IBeamCursor; enabled: root.canEdit; onClicked: pdf.editBlock(parent.modelData) }
                             }
                         }
@@ -1331,8 +1473,8 @@ ApplicationWindow {
             Text { Layout.fillWidth: true; wrapMode: Text.WordWrap; color: Theme.warnInk; visible: textDialog.visible && !pdf.liveEditor.canApply && textDialog.targetData.mode==="replace"; text: "글꼴 확인이나 오류 해결 전에는 적용할 수 없어요. 편집으로 돌아가거나 이번 입력을 버리고 닫을 수 있어요." }
             RowLayout {
                 Layout.alignment: Qt.AlignRight
-                ActionButton { objectName: "continueEditing"; text: "계속 편집"; onClicked: {root.closeAfterEdit=false;root.closeAllRequested=false;draftClose.close();} }
-                ActionButton { objectName: "discardDraftClose"; text: "입력 버리고 닫기"; enabled: !pdf.busy; onClicked: {root.closeAfterEdit=false;draftClose.close();textDialog.close();annotationEditor.close();Qt.callLater(function(){root.close();});} }
+                ActionButton { objectName: "continueEditing"; text: "계속 편집"; outlined: true; onClicked: {root.closeAfterEdit=false;root.closeAllRequested=false;draftClose.close();} }
+                ActionButton { objectName: "discardDraftClose"; text: "입력 버리고 닫기"; outlined: true; enabled: !pdf.busy; onClicked: {root.closeAfterEdit=false;draftClose.close();textDialog.close();annotationEditor.close();Qt.callLater(function(){root.close();});} }
                 ActionButton { objectName: "applyDraftClose"; text: "적용 후 닫기"; primary: true; enabled: !pdf.busy && (textDialog.visible ? (textDialog.targetData.mode!=="replace" || pdf.liveEditor.canApply) : annotationEditor.canApply); onClicked: {root.closeAfterEdit=true;draftClose.close();if(textDialog.visible)pdf.applyText(textDialog.targetData,textDialog.text,textDialog.fontSize,textDialog.areaHeight);else annotationEditor.apply();} }
             }
         }
@@ -1357,30 +1499,30 @@ ApplicationWindow {
     }
 
     AppDialog {
-        id: ocrDialog; anchors.centerIn: parent; width: 510; modal: true; title: "문자 인식 · OCR"
+        id: ocrDialog; anchors.centerIn: parent; width: 480; modal: true; title: "문자 인식 · OCR"
         standardButtons: Dialog.NoButton
         contentItem: ColumnLayout {
-            spacing: 15
+            spacing: Theme.gapM
             Text { Layout.fillWidth: true; text: "스캔 페이지에 검색 가능한 문자층을 추가해요. 이미 텍스트가 있는 페이지는 건너뛰며, 원본 이미지는 유지합니다."; wrapMode: Text.WordWrap; color: Theme.inkSoft }
             Text { Layout.fillWidth: true; visible: pdf.languages.length === 0; text: "OCR 언어 데이터를 찾지 못했어요. 설치 프로그램으로 다시 설치해 주세요."; wrapMode: Text.WordWrap; color: Theme.warnInk }
-            Text { text: "인식 범위"; font.pixelSize: Theme.small; font.weight: Font.Bold; color: Theme.inkMuted }
+            Text { text: "인식 범위"; font.pixelSize: Theme.small; font.weight: Font.Medium; color: Theme.inkMuted }
             AppComboBox { id: ocrScope; Layout.fillWidth: true; model: ["현재 페이지", "선택한 페이지", "전체 문서"] }
-            Text { text: "인식 언어"; font.pixelSize: Theme.small; font.weight: Font.Bold; color: Theme.inkMuted }
+            Text { text: "인식 언어"; font.pixelSize: Theme.small; font.weight: Font.Medium; color: Theme.inkMuted }
             AppComboBox {
                 id: ocrLanguage; Layout.fillWidth: true
                 model: pdf.languages.indexOf("kor")>=0 && pdf.languages.indexOf("eng")>=0 ? ["kor+eng"].concat(pdf.languages.filter(function(x){return x!=="osd";})) : pdf.languages.filter(function(x){return x!=="osd";})
             }
-            Text { visible: pdf.languages.length > 0 && pdf.languages.indexOf("kor") < 0; text: "한국어 데이터(kor)가 아직 설치되어 있지 않아요."; color: Theme.warnInk; font.pixelSize: 13 }
+            Text { visible: pdf.languages.length > 0 && pdf.languages.indexOf("kor") < 0; text: "한국어 데이터(kor)가 아직 설치되어 있지 않아요."; color: Theme.warnInk; font.pixelSize: Theme.small }
             RowLayout {
                 Layout.alignment: Qt.AlignRight
-                ActionButton { text: "취소"; onClicked: ocrDialog.close() }
+                ActionButton { text: "취소"; outlined: true; onClicked: ocrDialog.close() }
                 ActionButton { text: "OCR 시작"; primary: true; enabled: ocrLanguage.count>0; onClicked: { pdf.startOcr(["current","selected","all"][ocrScope.currentIndex],ocrLanguage.currentText); ocrDialog.close(); } }
             }
         }
     }
 
     AppDialog {
-        id: settingsDialog; objectName: "settingsDialog"; parent: Overlay.overlay; anchors.centerIn: parent; width: 490; modal: true; title: "설정"
+        id: settingsDialog; objectName: "settingsDialog"; parent: Overlay.overlay; anchors.centerIn: parent; width: 480; modal: true; title: "설정"
         standardButtons: Dialog.Ok
         contentItem: ScrollView {
             id: settingsScroll; objectName: "settingsScroll"; clip: true
@@ -1389,80 +1531,86 @@ ApplicationWindow {
             contentHeight: settingsContent.implicitHeight
             ColumnLayout {
                 id: settingsContent; width: settingsScroll.availableWidth
-                spacing: 14
+                spacing: Theme.gapS
                 ColumnLayout {
                     objectName: "defaultAppsSection"; Layout.fillWidth: true; visible: Qt.platform.os === "windows"; spacing: 6
                     ActionButton { objectName: "defaultAppsButton"; outlined: true; text: "기본 PDF 앱 설정"; onClicked: { settingsDialog.close(); pdf.openDefaultAppsSettings(); } }
-                    Text { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "Windows 설정에서 .pdf의 앱을 윤DF로 선택하면 PDF를 더블클릭해 열 수 있어요."; color: Theme.inkMuted; font.pixelSize: 13 }
+                    Text { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "Windows 설정에서 .pdf의 앱을 윤DF로 선택하면 PDF를 더블클릭해 열 수 있어요."; color: Theme.inkMuted; font.pixelSize: Theme.caption }
                 }
-                Text { text: "화면 테마"; color: Theme.ink; font.weight: Font.DemiBold }
+                Text { text: "화면 테마"; color: Theme.ink; font.weight: Font.Medium }
                 AppComboBox {
                     objectName: "themeChoice"; Layout.fillWidth: true
                     model: ["Windows 설정 따르기","밝게","어둡게"]
                     currentIndex: ["system","light","dark"].indexOf(pdf.themeMode)
                     onActivated: pdf.setThemeMode(["system","light","dark"][currentIndex])
                 }
-                Text { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "어두운 테마에서도 PDF 페이지는 원래 색 그대로 보여요."; color: Theme.inkMuted; font.pixelSize: 12; Layout.bottomMargin: 6 }
-                CheckBox {
+                Text { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "어두운 테마에서도 PDF 페이지는 원래 색 그대로 보여요."; color: Theme.inkMuted; font.pixelSize: Theme.caption; Layout.bottomMargin: Theme.gapXs }
+                AppCheckBox {
+                    objectName: "reduceMotionChoice"; text: "동작 줄이기"
+                    checked: pdf.reduceMotion; onToggled: pdf.setReduceMotion(checked)
+                }
+                Text { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "버튼·메뉴·패널이 움직이거나 커지지 않고 바로 바뀌어요. 작업 중인 내용은 그대로예요."; color: Theme.inkMuted; font.pixelSize: Theme.caption; Layout.bottomMargin: Theme.gapXs }
+                AppCheckBox {
                     visible: typeof library !== "undefined"; text: "최근 문서와 읽던 페이지 기억"
                     checked: typeof library !== "undefined" && library.enabled
                     onToggled: library.setEnabled(checked)
                 }
-                Text { visible: typeof library !== "undefined"; Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "다시 열면 지난번에 보던 페이지로 이동해요. 기록은 이 컴퓨터에만 저장돼요. 끄면 목록도 지워져요."; color: Theme.inkMuted; font.pixelSize: 12; Layout.bottomMargin: 6 }
-                Text { text: "마우스 휠 속도  ·  " + pdf.wheelSpeed.toFixed(1) + "배"; color: Theme.ink; font.weight: Font.DemiBold }
+                Text { visible: typeof library !== "undefined"; Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "다시 열면 지난번에 보던 페이지로 이동해요. 기록은 이 컴퓨터에만 저장돼요. 끄면 목록도 지워져요."; color: Theme.inkMuted; font.pixelSize: Theme.caption; Layout.bottomMargin: Theme.gapXs }
+                Text { text: "마우스 휠 속도  ·  " + pdf.wheelSpeed.toFixed(1) + "배"; color: Theme.ink; font.weight: Font.Medium; Layout.topMargin: Theme.gapS }
                 AppSlider { Layout.fillWidth: true; from: .5; to: 5; stepSize: .1; value: pdf.wheelSpeed; onMoved: pdf.setWheelSpeed(value) }
-                Text { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "Windows의 휠 줄 수 설정에 배율을 적용합니다. 무한 휠의 입력량을 모두 반영하며 터치패드의 픽셀 이동은 그대로 유지합니다."; color: Theme.inkMuted; font.pixelSize: 13 }
+                Text { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "Windows의 휠 줄 수 설정에 배율을 적용합니다. 무한 휠의 입력량을 모두 반영하며 터치패드의 픽셀 이동은 그대로 유지합니다."; color: Theme.inkMuted; font.pixelSize: Theme.caption }
                 ActionButton { outlined: true; text: "기본 속도 (1배)"; onClicked: pdf.setWheelSpeed(1) }
-                Text { text: "페이지 이미지 캐시"; color: Theme.ink; font.weight: Font.DemiBold; Layout.topMargin: 8 }
+                Text { text: "페이지 이미지 캐시"; color: Theme.ink; font.weight: Font.Medium; Layout.topMargin: Theme.gapS }
                 AppComboBox { Layout.fillWidth: true; model: ["256 MB · 절약","512 MB · 권장","1 GB · 많은 페이지 재사용"]; currentIndex: pdf.cacheMiB>=1024 ? 2 : pdf.cacheMiB>=512 ? 1 : 0; onActivated: pdf.setCacheMiB([256,512,1024][currentIndex]) }
-                Text { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "한번 본 페이지를 메모리에 보관해 다시 열 때 빠르게 표시합니다. 미리보기·PDF 엔진·그래픽 메모리는 별도로 사용합니다."; color: Theme.inkMuted; font.pixelSize: 12 }
+                Text { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "한번 본 페이지를 메모리에 보관해 다시 열 때 빠르게 표시합니다. 미리보기·PDF 엔진·그래픽 메모리는 별도로 사용합니다."; color: Theme.inkMuted; font.pixelSize: Theme.caption }
                 AppComboBox { Layout.fillWidth: true; model: ["그래픽 가속 · 자동","호환 모드 · 화면 표시 문제가 있을 때"]; currentIndex: pdf.graphicsMode === "software" ? 1 : 0; onActivated: pdf.setGraphicsMode(currentIndex ? "software" : "auto") }
-                Text { text: "그래픽 설정은 앱을 다시 실행하면 적용됩니다."; color: Theme.inkMuted; font.pixelSize: 12 }
-                CheckBox { text: "현재 보는 스캔 페이지 자동 OCR"; checked: pdf.automaticOcr; onToggled: pdf.setAutomaticOcr(checked) }
-                Text { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "일반 PDF의 글자는 바로 선택할 수 있습니다. 스캔은 인식이 끝나면 선택할 수 있으며, 저장하면 문자층이 PDF에 남습니다."; color: Theme.inkMuted; font.pixelSize: 13 }
+                Text { text: "그래픽 설정은 앱을 다시 실행하면 적용됩니다."; color: Theme.inkMuted; font.pixelSize: Theme.caption }
+                AppCheckBox { text: "현재 보는 스캔 페이지 자동 OCR"; checked: pdf.automaticOcr; onToggled: pdf.setAutomaticOcr(checked) }
+                Text { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "일반 PDF의 글자는 바로 선택할 수 있습니다. 스캔은 인식이 끝나면 선택할 수 있으며, 저장하면 문자층이 PDF에 남습니다."; color: Theme.inkMuted; font.pixelSize: Theme.caption }
                 ActionButton { outlined: true; text: "오류 로그 폴더 열기"; onClicked: pdf.openLogFolder() }
             }
         }
     }
 
     AppDialog {
-        id: aboutDialog; objectName: "aboutDialog"; anchors.centerIn: parent; width: 700; height: 580; modal: true; title: "윤DF · " + Qt.application.version
+        id: aboutDialog; objectName: "aboutDialog"; anchors.centerIn: parent; width: 620; height: 560; modal: true; title: ""
         standardButtons: Dialog.Ok
-        contentItem: RowLayout {
-            spacing: 20
-            // The character, mid-jump, in amekaji sunset colours.
-            Item {
-                Layout.preferredWidth: 220; Layout.fillHeight: true
-                Shadow { target: aboutArt; level: "medium" }
-                Rectangle {
-                    id: aboutArt; objectName: "aboutCharacter"; width: parent.width; height: width*1.2; radius: Theme.radiusLarge; clip: true; color: Theme.leatherSoft
-                    Image { anchors.fill: parent; source: "../assets/character/jumping.jpg"; fillMode: Image.PreserveAspectCrop; smooth: true; mipmap: true }
+        contentItem: ColumnLayout {
+            spacing: Theme.gapM
+            RowLayout {
+                spacing: Theme.gapL; Layout.topMargin: Theme.gapS
+                BrandMark { objectName: "aboutLogo"; size: 64 }
+                ColumnLayout {
+                    spacing: Theme.gapXs
+                    Text { text: "윤DF"; color: Theme.ink; font.pixelSize: Theme.title; font.weight: Font.DemiBold }
+                    Text { text: "버전 " + Qt.application.version + "  ·  Copyright © 2026 YoonDF contributors"; color: Theme.inkMuted; font.pixelSize: Theme.small }
                 }
             }
-            ColumnLayout {
-                Layout.fillWidth: true; Layout.fillHeight: true; spacing: 8
-                Text { text: "Copyright © 2026 YoonDF contributors"; color: Theme.ink; font.weight: Font.DemiBold }
-                Text { text: "AGPL-3.0-or-later · 이 라이선스에 따라 수정·재배포할 수 있습니다.\n보증 없이 제공됩니다. 전체 소스와 빌드 스크립트는 배포 압축파일에 포함됩니다."; wrapMode: Text.WordWrap; Layout.fillWidth: true; color: Theme.inkSoft; font.pixelSize: Theme.body; lineHeight: 1.3 }
-                ScrollView {
-                    Layout.fillWidth: true; Layout.fillHeight: true; Layout.topMargin: 6
-                    TextArea {
-                        readOnly: true; selectByMouse: true; text: aboutDialog.visible ? pdf.licenseText() : ""; wrapMode: TextEdit.Wrap; font.pixelSize: Theme.small
-                        color: Theme.inkSoft; padding: 12
-                        background: Rectangle { radius: Theme.radius+2; color: Theme.window; border.color: Theme.lineSoft; border.width: Theme.hairline }
-                    }
+            Text { text: "AGPL-3.0-or-later · 이 라이선스에 따라 수정·재배포할 수 있습니다. 보증 없이 제공됩니다. 전체 소스와 빌드 스크립트는 배포 압축파일에 포함됩니다."; wrapMode: Text.WordWrap; Layout.fillWidth: true; color: Theme.inkSoft; font.pixelSize: Theme.small; lineHeight: 1.35 }
+            ScrollView {
+                Layout.fillWidth: true; Layout.fillHeight: true; Layout.topMargin: Theme.gapXs
+                TextArea {
+                    readOnly: true; selectByMouse: true; text: aboutDialog.visible ? pdf.licenseText() : ""; wrapMode: TextEdit.Wrap; font.pixelSize: Theme.caption
+                    color: Theme.inkSoft; padding: Theme.gapM
+                    background: Rectangle { radius: Theme.radiusLarge; color: Theme.canvas; border.color: Theme.lineSoft; border.width: Theme.hairline }
                 }
             }
         }
     }
 
     AppDialog {
-        id: errorDialog; anchors.centerIn: parent; width: 520; modal: true; title: "확인해 주세요"
+        id: errorDialog; anchors.centerIn: parent; width: 500; modal: true; title: "확인해 주세요"
         property string message: ""
         standardButtons: Dialog.Ok
         contentItem: RowLayout {
-            spacing: 16
-            Image { objectName: "errorCharacter"; Layout.alignment: Qt.AlignTop; source: "../assets/character/face.png"; Layout.preferredWidth: 64; Layout.preferredHeight: 64*sourceSize.height/Math.max(1,sourceSize.width); smooth: true; mipmap: true }
-            Text { Layout.fillWidth: true; text: errorDialog.message; wrapMode: Text.WordWrap; color: Theme.ink; font.pixelSize: Theme.callout; lineHeight: 1.3 }
+            spacing: Theme.gapM
+            // A quiet notice mark: the message is what matters.
+            Rectangle {
+                objectName: "errorMark"; Layout.alignment: Qt.AlignTop; Layout.topMargin: 1
+                width: 24; height: 24; radius: 12; color: Theme.warnSurface; border.color: Theme.warnInk; border.width: 1.5
+                Text { anchors.centerIn: parent; text: "!"; color: Theme.warnInk; font.pixelSize: Theme.body; font.weight: Font.Bold }
+            }
+            Text { Layout.fillWidth: true; text: errorDialog.message; wrapMode: Text.WordWrap; color: Theme.ink; font.pixelSize: Theme.body; lineHeight: 1.4 }
         }
     }
 }

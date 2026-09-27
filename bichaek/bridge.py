@@ -533,6 +533,16 @@ class Bridge(QObject):
             self.preferences.setValue("themeMode", value)
             self.preferencesChanged.emit()
 
+    # Settings → 동작 줄이기: the interface changes at once, without movement.
+    @Property(bool, notify=preferencesChanged)
+    def reduceMotion(self):
+        return self.preferences.value("reduceMotion", False, type=bool)
+
+    @Slot(bool)
+    def setReduceMotion(self, value):
+        self.preferences.setValue("reduceMotion", bool(value))
+        self.preferencesChanged.emit()
+
     @Property(str,notify=preferencesChanged)
     def graphicsMode(self):return self.preferences.value("graphicsMode","auto")
     @Slot(str)

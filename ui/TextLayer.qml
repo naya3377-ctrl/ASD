@@ -198,32 +198,32 @@ Item {
             controller.selectCharacters(layer.pageNumber,layer.anchor,layer.caretAt(local.x/layer.factor,local.y/layer.factor));
         }
     }
-    Menu {
+    AppMenu {
         id: contextMenu; objectName: "pageContextMenu"+layer.pageNumber
-        MenuItem {
+        AppMenuItem {
             objectName: "deleteAnnotationMenuItem"
             text: layer.contextAnnotation && layer.contextAnnotation.type==="Highlight" ? "형광펜 삭제" : "주석 삭제"
             visible: layer.contextAnnotation!==null; height: visible ? implicitHeight : 0
             enabled: layer.allowEdits && controller.canAnnotate && !!layer.contextAnnotation && layer.contextAnnotation.editable
             onTriggered: controller.deleteAnnotationAt(layer.contextAnnotation)
         }
-        MenuItem {
+        AppMenuItem {
             objectName: "addMemoMenuItem"
             readonly property bool onSelection: controller.textSelection.count>0 && controller.textSelection.page===layer.pageNumber
             text: onSelection ? "선택한 글자에 메모" : "이 자리에 메모"
             enabled: layer.allowEdits && controller.canAnnotate
             onTriggered: onSelection ? controller.composeSelectionComment() : controller.composeComment(layer.pageNumber,layer.contextPoint.x,layer.contextPoint.y)
         }
-        MenuSeparator { }
-        MenuItem { objectName: "copyImageMenuItem"; text: "이미지 복사"; visible: layer.contextImage!==null; height: visible ? implicitHeight : 0; onTriggered: controller.exportImage(layer.contextImage,false) }
-        MenuItem { objectName: "saveImageMenuItem"; text: "이미지를 파일로 저장…"; visible: layer.contextImage!==null; height: visible ? implicitHeight : 0; onTriggered: controller.exportImage(layer.contextImage,true) }
-        MenuSeparator { visible: layer.contextImage!==null; height: visible ? implicitHeight : 0 }
-        MenuItem { objectName: "highlightMenuItem"; text: "형광펜"; enabled: layer.allowEdits && controller.canAnnotate && controller.textSelection.count>0; onTriggered: controller.annotateSelection("highlight") }
-        MenuItem { text: "밑줄"; enabled: layer.allowEdits && controller.canAnnotate && controller.textSelection.count>0; onTriggered: controller.annotateSelection("underline") }
-        MenuItem { text: "취소선"; enabled: layer.allowEdits && controller.canAnnotate && controller.textSelection.count>0; onTriggered: controller.annotateSelection("strikeout") }
-        MenuSeparator { }
-        MenuItem { text: "복사\tCtrl+C"; enabled: controller.textSelection.count>0 && layer.layout.copyable; onTriggered: controller.copySelection() }
-        MenuItem { text: "이 페이지의 텍스트 전체 선택"; enabled: !!layer.layout.markable; onTriggered: { controller.setCurrentPage(layer.pageNumber); controller.selectAllText(); } }
-        MenuItem { text: "링크 열기"; visible: layer.contextLink !== null; height: visible ? implicitHeight : 0; onTriggered: controller.activateLink(layer.contextLink) }
+        AppMenuSeparator { }
+        AppMenuItem { objectName: "copyImageMenuItem"; text: "이미지 복사"; visible: layer.contextImage!==null; height: visible ? implicitHeight : 0; onTriggered: controller.exportImage(layer.contextImage,false) }
+        AppMenuItem { objectName: "saveImageMenuItem"; text: "이미지를 파일로 저장…"; visible: layer.contextImage!==null; height: visible ? implicitHeight : 0; onTriggered: controller.exportImage(layer.contextImage,true) }
+        AppMenuSeparator { visible: layer.contextImage!==null; height: visible ? implicitHeight : 0 }
+        AppMenuItem { objectName: "highlightMenuItem"; text: "형광펜"; enabled: layer.allowEdits && controller.canAnnotate && controller.textSelection.count>0; onTriggered: controller.annotateSelection("highlight") }
+        AppMenuItem { text: "밑줄"; enabled: layer.allowEdits && controller.canAnnotate && controller.textSelection.count>0; onTriggered: controller.annotateSelection("underline") }
+        AppMenuItem { text: "취소선"; enabled: layer.allowEdits && controller.canAnnotate && controller.textSelection.count>0; onTriggered: controller.annotateSelection("strikeout") }
+        AppMenuSeparator { }
+        AppMenuItem { text: "복사\tCtrl+C"; enabled: controller.textSelection.count>0 && layer.layout.copyable; onTriggered: controller.copySelection() }
+        AppMenuItem { text: "이 페이지의 텍스트 전체 선택"; enabled: !!layer.layout.markable; onTriggered: { controller.setCurrentPage(layer.pageNumber); controller.selectAllText(); } }
+        AppMenuItem { text: "링크 열기"; visible: layer.contextLink !== null; height: visible ? implicitHeight : 0; onTriggered: controller.activateLink(layer.contextLink) }
     }
 }

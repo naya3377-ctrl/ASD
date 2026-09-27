@@ -8,7 +8,7 @@ BorderImage {
     id: shadow
     required property Item target
     property string level: "small"   // small, medium, large, page
-    readonly property var levels: ({small: [8, 6, 1], medium: [16, 10, 3], large: [36, 12, 12], page: [14, 0, 2]})
+    readonly property var levels: ({small: [6, 6, 1], medium: [14, 10, 3], large: [28, 12, 8], page: [12, 0, 1]})
     readonly property int margin: levels[level][0]
     readonly property int edge: levels[level][0] + levels[level][1]
     readonly property int drop: levels[level][2]

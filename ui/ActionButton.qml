@@ -2,13 +2,16 @@
 import QtQuick
 import QtQuick.Controls
 
-// Every button in the app, shaped like macOS controls:
-//  - ghost (default): a toolbar button; a soft tint on hover, denim-tinted
-//    when `active` (the tool in use)
-//  - primary: the indigo push button
-//  - outlined: the raised bezel push button
+// Every button in the app. Flat faces and hairline edges, no gloss:
+//  - ghost (default): a toolbar button; a faint tint on hover, the quiet
+//    blue-grey selection with a blue icon when `active` (the tool in use)
+//  - primary: the one main action, filled with the accent
+//  - outlined: a secondary push button, white with a hairline edge
 //  - tab: a segment of a Segmented control (the control draws the chosen pill)
 //  - hud: a button on dark floating controls (slide show, focus reading)
+// The click area is at least 32 × 32 and never moves. On press only the
+// content shrinks a touch (1 → .97 in 70 ms, back in 140 ms); the command
+// itself runs at once.
 Button {
     id: control
     property bool active: false
@@ -21,33 +24,55 @@ Button {
     property string glyph: ""
     property string hint: ""
     property string shortcutText: ""
+    property real iconSize: 18
     readonly property color fillColor: primary ? (down ? Theme.accentPressed : hovered ? Theme.accentHover : Theme.accent)
-        : outlined ? (down ? Qt.darker(Theme.raised, 1.06) : Theme.raised)
+        : outlined ? (down ? Theme.pressed : hovered ? Theme.hover : "transparent")
         : tab ? (hovered && !active ? Theme.hover : "transparent")
         : hud ? (down ? "#40ffffff" : hovered ? "#26ffffff" : active ? "#33ffffff" : "transparent")
         : active ? Theme.accentSoft : down ? Theme.pressed : hovered ? Theme.hover : "transparent"
-    readonly property color tone: primary ? Theme.inkOnAccent : hud ? Theme.hudInk
-        : tab ? (active ? Theme.ink : Theme.inkSoft)
-        : active ? Theme.accentInk : Theme.ink
-    implicitHeight: compact ? 28 : 32
-    implicitWidth: Math.max(implicitHeight, contentItem.implicitWidth + (text.length ? 24 : 12))
-    leftPadding: text.length ? 12 : 6; rightPadding: text.length ? 12 : 6
+    readonly property color baseTone: primary ? Theme.inkOnAccent : hud ? Theme.hudInk : tab ? Theme.inkSoft : Theme.ink
+    readonly property color activeTone: primary || hud ? baseTone : tab ? Theme.ink : Theme.accent
+    // 0 → 1 as the button becomes active; the icon cross-fades between tones.
+    property real activeMix: active ? 1 : 0
+    Behavior on activeMix { NumberAnimation { duration: Theme.selectMs; easing.type: Easing.OutCubic } }
+    readonly property color tone: active ? activeTone : baseTone
+
+    implicitHeight: Theme.control
+    implicitWidth: Math.max(implicitHeight, contentItem.implicitWidth + leftPadding + rightPadding)
+    leftPadding: text.length ? (compact ? 10 : 12) : 7; rightPadding: leftPadding
     font.family: Theme.family
     font.pixelSize: Theme.body
-    font.weight: primary || (tab && active) ? Font.DemiBold : Font.Medium
+    font.weight: primary || (tab && active) || (active && !tab && !hud) ? Font.DemiBold : Font.Medium
     hoverEnabled: true
     focusPolicy: Qt.TabFocus
     opacity: enabled ? 1 : .38
-    Behavior on opacity { NumberAnimation { duration: Theme.fast } }
+
+    // Press feedback on the content only, continuing from wherever it is.
+    property real press: 1
+    NumberAnimation { id: pressMotion; target: control; property: "press"; easing.type: Easing.OutCubic }
+    onDownChanged: {
+        pressMotion.stop();
+        pressMotion.to = down ? Theme.pressScale : 1;
+        pressMotion.duration = down ? Theme.pressInMs : Theme.pressOutMs;
+        if (Theme.reduceMotion) press = pressMotion.to; else pressMotion.start();
+    }
+
     contentItem: Item {
         implicitWidth: contentRow.implicitWidth; implicitHeight: 20
         Row {
             id: contentRow; spacing: 7; anchors.verticalCenter: parent.verticalCenter
             x: control.leftAligned ? 0 : (parent.width-width)/2
-            Icon { name: control.glyph; tone: control.tone; anchors.verticalCenter: parent.verticalCenter; size: control.glyph.length ? 17 : 0 }
+            scale: control.press
+            Item {
+                width: control.glyph.length ? control.iconSize : 0; height: control.iconSize
+                anchors.verticalCenter: parent.verticalCenter; visible: control.glyph.length > 0
+                Icon { name: control.glyph; tone: control.baseTone; size: control.iconSize; opacity: 1 - control.activeMix; visible: opacity > 0 }
+                Icon { name: control.glyph; tone: control.activeTone; size: control.iconSize; opacity: control.activeMix; visible: opacity > 0 }
+            }
             Text {
                 visible: control.text.length>0; text: control.text; font: control.font
                 color: control.tone; anchors.verticalCenter: parent.verticalCenter
+                Behavior on color { ColorAnimation { duration: Theme.selectMs; easing.type: Easing.OutCubic } }
             }
             Text {
                 visible: control.shortcutText.length>0 && control.leftAligned; text: control.shortcutText
@@ -57,24 +82,18 @@ Button {
         }
     }
     background: Item {
-        Shadow { target: face; level: "small"; visible: control.primary || control.outlined; opacity: control.down ? .4 : .75 }
         Rectangle {
             id: face; anchors.fill: parent
             radius: Theme.radius
             color: control.fillColor
             border.width: control.outlined ? Theme.hairline : 0
-            border.color: Theme.line
-            Behavior on color { ColorAnimation { duration: Theme.fast } }
-            // The top edge of a push button catches a little light.
-            Rectangle {
-                visible: control.primary; anchors.fill: parent; radius: parent.radius
-                gradient: Gradient { GradientStop { position: 0; color: "#1fffffff" } GradientStop { position: .6; color: "#00ffffff" } }
-            }
+            border.color: control.hovered ? Theme.lineStrong : Theme.line
+            Behavior on color { ColorAnimation { duration: Theme.hoverMs; easing.type: Easing.OutCubic } }
         }
-        // Keyboard focus: a soft denim ring around the control.
+        // Keyboard focus: a ring just outside the button.
         Rectangle {
-            visible: control.visualFocus; anchors.fill: parent; anchors.margins: -3
-            radius: Theme.radius+3; color: "transparent"; border.color: Theme.focusRing; border.width: 2; opacity: .75
+            visible: control.visualFocus; anchors.fill: parent; anchors.margins: -2
+            radius: Theme.radius+2; color: "transparent"; border.color: Theme.focusRing; border.width: 2
         }
     }
     ToolTip.visible: hovered && hint.length>0

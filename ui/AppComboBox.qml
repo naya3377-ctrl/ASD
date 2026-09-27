@@ -2,39 +2,52 @@
 import QtQuick
 import QtQuick.Controls
 
-// A macOS pop-up button: a raised bezel with a chevron; the list opens as a
-// rounded menu with the highlighted row in indigo.
+// A pop-up button: a white field with a hairline edge and a chevron. The list
+// opens like every menu (150 ms in, rows settling 4 px; 100 ms out) with the
+// highlighted row on the quiet selection colour and a check on the current one.
 ComboBox {
     id: box
-    implicitHeight: 30
+    implicitHeight: Theme.control
     font.family: Theme.family
     font.pixelSize: Theme.body
     opacity: enabled ? 1 : .38
+    property real shift: 0
     contentItem: Text {
         leftPadding: 11; rightPadding: 8; text: box.displayText; font: box.font
         color: Theme.ink; verticalAlignment: Text.AlignVCenter; elide: Text.ElideRight
     }
     indicator: Icon {
-        x: box.width-width-9; y: (box.height-height)/2; name: "down"; size: 13; tone: Theme.inkMuted
+        x: box.width-width-10; y: (box.height-height)/2; name: "down"; size: 13; tone: Theme.inkMuted
     }
-    background: Item {
-        Shadow { target: bezel; level: "small"; opacity: .7 }
-        Rectangle {
-            id: bezel; anchors.fill: parent; radius: Theme.radius
-            color: box.pressed ? Qt.darker(Theme.raised, 1.05) : Theme.raised
-            border.width: Theme.hairline; border.color: box.visualFocus ? Theme.focusRing : Theme.line
-        }
+    background: Rectangle {
+        radius: Theme.radius
+        color: box.pressed ? Theme.pressed : box.hovered ? Theme.hover : Theme.field
+        border.width: box.visualFocus ? 2 : Theme.hairline
+        border.color: box.visualFocus ? Theme.focusRing : box.hovered ? Theme.lineStrong : Theme.line
+        Behavior on color { ColorAnimation { duration: Theme.hoverMs } }
     }
     delegate: ItemDelegate {
         required property var modelData; required property int index
-        width: box.popup.availableWidth; height: 30
+        width: box.popup.availableWidth; height: 32
         highlighted: box.highlightedIndex === index
+        leftPadding: 30
         contentItem: Text {
             text: typeof parent.modelData === "string" ? parent.modelData : box.textAt(parent.index); font: box.font
-            color: parent.highlighted ? Theme.inkOnAccent : Theme.ink; verticalAlignment: Text.AlignVCenter; elide: Text.ElideRight
+            color: Theme.ink; verticalAlignment: Text.AlignVCenter; elide: Text.ElideRight
         }
-        background: Rectangle { radius: Theme.radiusSmall; color: parent.highlighted ? Theme.accent : "transparent" }
+        Icon { visible: box.currentIndex === parent.index; x: 9; anchors.verticalCenter: parent.verticalCenter; name: "check"; size: 15; tone: Theme.accent }
+        background: Rectangle { radius: Theme.radius; color: parent.highlighted ? Theme.accentSoft : "transparent" }
     }
     popup.padding: 5
-    popup.background: Block { fill: Theme.raised; radius: Theme.radius+2; shadow: "medium" }
+    popup.y: box.height + 4
+    popup.background: Block { fill: Theme.raised; radius: Theme.radiusLarge; shadow: "medium"; outline: Theme.line }
+    popup.enter: Transition {
+        ParallelAnimation {
+            NumberAnimation { property: "opacity"; from: 0; to: 1; duration: Theme.menuInMs; easing.type: Easing.OutCubic }
+            NumberAnimation { target: box; property: "shift"; from: Theme.menuShift; to: 0; duration: Theme.menuInMs; easing.type: Easing.OutCubic }
+        }
+    }
+    popup.exit: Transition { NumberAnimation { property: "opacity"; to: 0; duration: Theme.menuOutMs; easing.type: Easing.OutCubic } }
+    Component.onCompleted: if (popup.contentItem) popup.contentItem.transform = [listShift]
+    property Translate listShift: Translate { y: box.shift }
 }

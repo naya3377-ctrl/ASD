@@ -83,7 +83,7 @@ FocusScope {
         Text {
             anchors.centerIn: parent; visible: !view.pageImage
             text: view.renderError ? "페이지를 표시하지 못했어요." : "페이지 불러오는 중…"
-            color: "#8a7f73"; font.pixelSize: 14
+            color: "#8a8f96"; font.pixelSize: Theme.body
         }
     }
     MouseArea {
@@ -121,13 +121,13 @@ FocusScope {
     Rectangle {
         id: controls; objectName: "presentationControls"
         anchors.bottom: parent.bottom; anchors.horizontalCenter: parent.horizontalCenter; anchors.bottomMargin: 14
-        width: toolbar.implicitWidth+24; height: 54
-        visible: view.controlsVisible; color: Theme.hud; radius: Theme.radiusLarge+3
+        width: toolbar.implicitWidth+24; height: 52
+        visible: view.controlsVisible; color: Theme.hud; radius: Theme.radiusDialog
         HoverHandler { id: controlsHover }
         RowLayout {
             id: toolbar; anchors.centerIn: parent; spacing: 8
             ActionButton { objectName: "slidePreviousButton"; glyph: "left"; hud: true; enabled: view.page>0; hint: "이전 페이지 · ← / ↑ / Page Up"; onClicked: { view.move(-1); view.showControls(); } }
-            Text { objectName: "slidePageNumber"; text: (view.page+1)+" / "+view.controller.document.count; horizontalAlignment: Text.AlignHCenter; Layout.minimumWidth: 76; color: Theme.hudInk; font.features: ({ "tnum": 1 }); font.pixelSize: Theme.body; font.weight: Font.DemiBold }
+            Text { objectName: "slidePageNumber"; text: (view.page+1)+" / "+view.controller.document.count; horizontalAlignment: Text.AlignHCenter; Layout.minimumWidth: 76; color: Theme.hudInk; font.features: ({ "tnum": 1 }); font.pixelSize: Theme.body; font.weight: Font.Medium }
             ActionButton { objectName: "slideNextButton"; glyph: "right"; hud: true; enabled: view.page<view.controller.document.count-1; hint: "다음 페이지 · → / ↓ / Page Down / Space"; onClicked: { view.move(1); view.showControls(); } }
             Rectangle { width: Theme.hairline; height: 22; color: "#33ffffff" }
             ActionButton { objectName: "exitPresentationButton"; text: "종료 · Esc"; primary: true; onClicked: view.exitRequested() }
