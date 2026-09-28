@@ -41,7 +41,7 @@ ApplicationWindow {
     property bool closeAllRequested: false
     function quitApplication() { closeAllRequested=true; close(); }
     property bool restoring: false
-    property bool dialogsClear: !textDialog.visible && !annotationEditor.visible && !mergeDialog.visible && !ocrDialog.visible && !settingsDialog.visible && !errorDialog.visible && !aboutDialog.visible && !(tabWorkspace && tabWorkspace.closing)
+    property bool dialogsClear: !textDialog.visible && !annotationEditor.visible && !mergeDialog.visible && !ocrDialog.visible && !settingsDialog.visible && !errorDialog.visible && !aboutDialog.visible && !closeChoice.visible && !(tabWorkspace && tabWorkspace.closing)
     property bool tabActionsEnabled: dialogsClear && !presenting
     property bool externalOpenReady: dialogsClear && !readerMenuOpen && !tabMenu.visible && !switching
     property bool externalOpenPending: typeof externalRequests !== "undefined" && externalRequests.pending
@@ -316,9 +316,10 @@ ApplicationWindow {
         if(externalOpenPending) {
             event.accepted=false; closeAllRequested=false; return;
         }
+        // Several tabs: ask whether X means this tab or all of them.
         if(tabWorkspace && !closeAllRequested && tabStrip.count>1) {
             event.accepted=false;
-            tabWorkspace.closeTab(tabWorkspace.activeIndex);
+            closeChoice.open();
             return;
         }
         event.accepted=tabWorkspace ? tabWorkspace.mayClose() : pdf.mayClose();
@@ -488,6 +489,8 @@ ApplicationWindow {
                     model: root.tabWorkspace ? root.tabWorkspace.tabModel : null
                     MenuItem { required property var modelData; required property int index; text: (modelData.dirty ? "● " : "")+modelData.name; checkable: true; checked: index===root.tabWorkspace.activeIndex; onTriggered: root.tabWorkspace.activateId(modelData.id) }
                 }
+                MenuSeparator {}
+                MenuItem { objectName: "closeAllTabsItem"; text: "모든 탭 닫기"; enabled: root.tabActionsEnabled; onTriggered: root.tabWorkspace.closeAll() }
             }
         }
         // Row 2 · one toolbar: modes on the left, view and file actions on the right.
@@ -1314,6 +1317,26 @@ ApplicationWindow {
             targetData=data; text=data.text || ""; fontSize=Number(data.size || 14);
             areaHeight=data.mode==="replace" ? data.rect[3]-data.rect[1]+10 : data.height;
             visible=true;
+        }
+    }
+
+    // Window X with several tabs open. Enter closes everything.
+    BauhausDialog {
+        id: closeChoice; objectName: "closeChoiceDialog"; anchors.centerIn: parent; width: 440; modal: true
+        title: "창 닫기"
+        contentItem: ColumnLayout {
+            spacing: 8
+            // Inside the popup: a modal dialog blocks shortcuts declared outside it.
+            Shortcut { sequences: ["Return","Enter"]; enabled: closeChoice.visible; onActivated: { closeChoice.close(); root.quitApplication(); } }
+            Text { text: "탭 " + tabStrip.count + "개가 열려 있어요."; font.pixelSize: 16; font.weight: Font.Black; color: Theme.ink }
+            Text { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "저장하지 않은 문서가 있으면 닫기 전에 저장할지 물어봐요."; font.pixelSize: 13; color: Theme.inkMuted }
+        }
+        footer: RowLayout {
+            spacing: 10
+            Item { Layout.fillWidth: true }
+            ActionButton { objectName: "cancelCloseChoice"; text: "취소"; Layout.bottomMargin: 18; onClicked: closeChoice.close() }
+            ActionButton { objectName: "closeThisTab"; text: "이 탭만 닫기"; outlined: true; Layout.bottomMargin: 18; onClicked: { closeChoice.close(); root.tabWorkspace.closeTab(root.tabWorkspace.activeIndex); } }
+            ActionButton { objectName: "closeAllTabs"; text: "모든 탭 닫기"; primary: true; Layout.bottomMargin: 18; Layout.rightMargin: 22; onClicked: { closeChoice.close(); root.quitApplication(); } }
         }
     }
 

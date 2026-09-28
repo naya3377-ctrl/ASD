@@ -191,14 +191,17 @@ def main():
             assert types.count('Highlight')==3 and types.count('Text')==1,types
         assert not errors and not warnings,(errors,warnings)
         print('PASS: original embedded font retained; missing glyph draft retained; selected Korean font and images/markups persist after PDF reopen',flush=True)
-        # The native-window close event now closes only the active tab.
+        # With several tabs, window X asks: this tab only, or all of them.
         b.edit('add_text',{'page':0,'rect':[40,600,440,650],'text':'CLOSE TAB SAVE','size':16})
         wait(lambda:not b.busy)
+        choice=window.findChild(QObject,'closeChoiceDialog')
+        assert not window.close();wait(lambda:choice.property('visible'))
         with patch.object(QMessageBox,'question',return_value=QMessageBox.Cancel):
-            assert not window.close()
-        assert len(documents.tabs)==2 and window.isVisible()
+            click('closeThisTab')
+        assert len(documents.tabs)==2 and window.isVisible() and not choice.property('visible')
+        assert not window.close();wait(lambda:choice.property('visible'))
         with patch.object(QMessageBox,'question',return_value=QMessageBox.Save):
-            assert not window.close()
+            click('closeThisTab')
             wait(lambda:len(documents.tabs)==1 and ready())
         assert window.isVisible()
         with fitz.open(source) as saved_pdf:assert 'CLOSE TAB SAVE' in saved_pdf[0].get_text()
@@ -211,11 +214,13 @@ def main():
             QTest.keyClick(window,Qt.Key_Q,Qt.ControlModifier|Qt.ShiftModifier)
             wait(lambda:not documents.closing)
         assert len(documents.tabs)==2 and window.isVisible()
+        # X, then Enter: close all tabs, still asking about the unsaved hidden one.
+        assert not window.close();wait(lambda:choice.property('visible'))
         with patch.object(QMessageBox,'question',return_value=QMessageBox.Discard):
-            QTest.keyClick(window,Qt.Key_Q,Qt.ControlModifier|Qt.ShiftModifier)
+            QTest.keyClick(window,Qt.Key_Return)
             wait(lambda:not window.isVisible())
         assert not warnings,warnings
-        print('PASS: window X closes active tab; dirty-tab cancel/save; Ctrl+Shift+Q handles dirty hidden tabs and closes all',flush=True)
+        print('PASS: window X offers this tab or all tabs; dirty-tab cancel/save; Ctrl+Shift+Q cancel; X+Enter closes all with dirty hidden tab',flush=True)
     finally:
         documents.activeBridge.setAutomaticOcr(saved_auto)
         window.setVisible(False);documents.shutdown();del engine

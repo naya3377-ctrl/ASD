@@ -91,8 +91,16 @@ def main():
         title_click(0);wait(lambda:field.isVisible());field.setProperty('text','둘째 문서');QTest.keyClick(w,Qt.Key_Return)
         wait(lambda:bool(errors) and not b.busy)
         assert b.document['name']=='편집 중.pdf' and (folder/'편집 중.pdf').exists()
+        # Tab list menu: close all tabs, the window stays with an empty tab
+        second_tab=[x for x in docs._tabs if x is not b][0]
+        from unittest.mock import patch
+        from PySide6.QtWidgets import QMessageBox
+        with patch.object(QMessageBox,'question',return_value=QMessageBox.Discard):
+            docs.closeAll()
+        wait(lambda:len(docs._tabs)==1 and not docs.activeBridge.document['count'])
+        assert w.isVisible()
         assert not [m for m in warnings if 'Binding loop' in m or 'TypeError' in m],warnings
-        print('PASS: click current tab to rename; Enter applies on disk, Esc cancels, other tabs just switch; unsaved edits kept; taken names refused')
+        print('PASS: click current tab to rename; Enter applies on disk, Esc cancels, other tabs just switch; unsaved edits kept; taken names refused; close all tabs keeps the window')
     finally:
         for bridge in list(getattr(docs,'_tabs',[])): bridge._state['dirty']=False
         w.setVisible(False);docs.shutdown();del engine

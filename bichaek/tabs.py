@@ -147,6 +147,7 @@ class Documents(QObject):
         self._index = -1
         self._closing = False
         self._close_approved = False
+        self._close_all = []
         self._close_queue = []
         self.newTab()
 
@@ -316,6 +317,28 @@ class Documents(QObject):
         if choice == QMessageBox.Save:
             self.save_before_close(b, lambda: self._remove(b), lambda: None)
         else: self._remove(b)
+
+    @Slot()
+    def closeAll(self):
+        """Close every tab but keep the window, asking about each unsaved one.
+        Cancel (or a failed save) stops with the remaining tabs left open."""
+        if self._closing: return
+        self._close_all = list(self._tabs)
+        self._close_all_next()
+
+    def _close_all_next(self):
+        while self._close_all:
+            b = self._close_all.pop(0)
+            if b not in self._tabs: continue
+            choice = self.ask_close(b)
+            if choice == QMessageBox.Cancel:
+                self._close_all = []; return
+            if choice == QMessageBox.Save:
+                def saved(b=b): self._remove(b); self._close_all_next()
+                def failed(): self._close_all = []
+                self.save_before_close(b, saved, failed)
+                return
+            self._remove(b)
 
     def _remove(self, b):
         if b not in self._tabs: return

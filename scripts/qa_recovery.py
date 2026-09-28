@@ -119,7 +119,8 @@ def main():
         click('continueEditing');assert b.liveEditor.doc.toPlainText()==expected
         window.close();wait(lambda:item('draftCloseDialog').property('visible'))
         with patch.object(QMessageBox,'question',return_value=QMessageBox.Save):
-            click('applyDraftClose');wait(lambda:len(documents.tabs)==1 and ready())
+            click('applyDraftClose');wait(lambda:item('closeChoiceDialog').property('visible'))
+            click('closeThisTab');wait(lambda:len(documents.tabs)==1 and ready())
         assert window.isVisible()
         with fitz.open(source) as saved:assert '마지막' in saved[0].get_text()
         # The remaining tab is still a clean original. Closing during a stalled
