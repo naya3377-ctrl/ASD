@@ -2,7 +2,7 @@
 Unicode true
 !include "MUI2.nsh"
 !include "x64.nsh"
-!define VERSION "1.0.3"
+!define VERSION "1.0.4"
 Name "윤DF"
 OutFile "${OUTPUT}"
 InstallDir "$LOCALAPPDATA\Programs\YoonDF"

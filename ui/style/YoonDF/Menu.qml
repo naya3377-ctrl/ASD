@@ -5,6 +5,8 @@ import QtQuick.Controls.Basic as B
 import "../.."
 B.Menu {
     id: control
+    enter: Transition { NumberAnimation { property: "opacity"; from: 0; to: 1; duration: Theme.motionNormal; easing.type: Easing.OutCubic } }
+    exit: Transition { } // Release popup/modal input immediately on close.
     padding: 5
     implicitWidth: Math.max(200, contentWidth + leftPadding + rightPadding)
     delegate: MenuItem { }

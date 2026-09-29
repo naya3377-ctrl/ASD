@@ -38,7 +38,7 @@ def main():
     p.insert_link({'kind':fitz.LINK_GOTO,'from':fitz.Rect(40,180,220,212),'page':2,'to':fitz.Point(0,0)})
     pdf[1].set_rotation(90)
     pdf.save(fixture);pdf.close()
-    QQuickStyle.setStyle('Basic');app=QApplication([])
+    QQuickStyle.setStyle(os.environ.get('YOONDF_QA_STYLE','Basic'));app=QApplication([])
     QFontDatabase.addApplicationFontFromData(QByteArray(fitz.Font('korea').buffer))
     images=Images();bridge=Bridge(images)
     saved_auto=bridge.automaticOcr;saved_speed=bridge.wheelSpeed
@@ -122,6 +122,12 @@ def main():
         assert abs(pages.property('contentY')-before-37)<.1,(before,pages.property('contentY'),single,large)
         z=window.property('zoom');wheel(120,mods=Qt.ControlModifier)
         assert window.property('zoom')>z
+        # Wheel input immediately takes ownership from a pending link/page restoration.
+        window.goPage(4)
+        assert window.property('restoring')
+        wheel(-120)
+        assert not window.property('restoring'), 'Link restoration must stop on a manual wheel event'
+        QTest.qWait(200)
         bridge.activateLink({'kind':'page','page':1,'point':[0,0]})
         wait(lambda:bridge.currentPage==1 and len(bridge.textLayout(1)['chars'])>0)
         layer=item('textLayer1');a=bridge.textLayout(1)['chars'][0];b=bridge.textLayout(1)['chars'][9]

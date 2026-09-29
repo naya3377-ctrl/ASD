@@ -36,7 +36,7 @@ def main():
     from bichaek.bridge import Images
     from bichaek.tabs import Documents
     out=root/'test-output';out.mkdir(exist_ok=True);pdf=out/'Reading Modes.pdf';build(pdf)
-    QQuickStyle.setStyle('Basic');app=QApplication([])
+    QQuickStyle.setStyle(os.environ.get('YOONDF_QA_STYLE','Basic'));app=QApplication([])
     warnings=[];qInstallMessageHandler(lambda k,c,m: warnings.append(m) if 'file:' in m else None)
     images=Images();docs=Documents(images)
     engine=QQmlApplicationEngine();engine.addImageProvider('pages',images)

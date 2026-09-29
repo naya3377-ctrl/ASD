@@ -14,8 +14,8 @@ B.ScrollBar {
         radius: width / 2
         color: control.pressed ? Theme.inkMuted : Theme.inkFaint
         opacity: control.policy === B.ScrollBar.AlwaysOn || control.active || control.hovered ? .85 : 0
-        Behavior on opacity { NumberAnimation { duration: 250 } }
-        Behavior on implicitWidth { NumberAnimation { duration: 120 } }
+        Behavior on opacity { NumberAnimation { duration: Theme.reducedMotion ? 0 : 250 } }
+        Behavior on implicitWidth { NumberAnimation { duration: Theme.motionFast } }
     }
     background: Item { }
 }

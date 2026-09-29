@@ -31,6 +31,7 @@ ApplicationWindow {
     palette.toolTipText: "#f2f5f3"
     Binding { target: Theme; property: "mode"; value: root.pdf ? root.pdf.themeMode : "system" }
     Binding { target: Theme; property: "accentName"; value: root.pdf && root.pdf.accentColor ? root.pdf.accentColor : "blue" }
+    Binding { target: Theme; property: "reducedMotion"; value: root.pdf ? root.pdf.reducedMotion : false }
     // The Windows title bar takes the theme too (dark mode, and on Windows 11
     // the tab strip's colour), so title, tabs and toolbar read as one surface.
     function applyFrame() { if (typeof windowFrame !== "undefined" && windowFrame) windowFrame.apply(Theme.dark, Theme.chrome, Theme.ink); }
@@ -432,6 +433,7 @@ ApplicationWindow {
                         property real dragOffset: 0
                         // Like Windows Explorer: the first click selects the tab, a
                         // second, separate click renames. A quick double click does not.
+                        property var renameOwner: null
                         property bool renaming: false
                         property double lastClick: 0
                         // Shown right after Enter until the engine confirms, so the title never flickers back.
@@ -439,19 +441,19 @@ ApplicationWindow {
                         readonly property bool canRename: current && !!modelData.path && root.hasDocument && root.tabActionsEnabled && !pdf.busy && !pdf.ocrBusy && !textDialog.visible
                         readonly property string stem: String(modelData.name || "").replace(/\.pdf$/i, "")
                         onRenamingChanged: root.renamingTab=renaming
-                        function startRename() { renaming=true; renameField.text=stem; renameField.forceActiveFocus(); renameField.selectAll(); }
+                        function startRename() { renameOwner=root.pdf; renaming=true; renameField.text=stem; renameField.forceActiveFocus(); renameField.selectAll(); }
                         function finishRename(apply) {
                             if(!renaming) return;
                             renaming=false;
                             var name=renameField.text.trim();
-                            if(apply && name.length && name!==stem) {
+                            if(apply && renameOwner===root.pdf && current && name.length && name!==stem) {
                                 pendingName=(name.toLowerCase().endsWith(".pdf") ? name : name+".pdf");
                                 root.pdf.renameFile(name);
                                 if(!root.pdf.busy) pendingName="";   // nothing started (same name)
                             }
                             pages.forceActiveFocus();
                         }
-                        onCurrentChanged: { lastClick=Date.now(); if(!current) finishRename(true); }
+                        onCurrentChanged: { lastClick=Date.now(); if(!current) finishRename(false); }
                         Connections {
                             target: root.pdf; enabled: documentTab.pendingName.length>0
                             // Confirmed (name changed) or refused (work finished without it): drop the preview.
@@ -469,6 +471,7 @@ ApplicationWindow {
                             color: documentTab.current ? (Theme.dark ? "#48484a" : Theme.raised) : tabMouse.containsMouse || tabDrag.active ? Theme.hover : "transparent"
                             border.width: documentTab.current ? 1 : 0; border.color: Theme.line
                             opacity: tabDrag.active ? .92 : 1
+                            Behavior on color { ColorAnimation { duration: Theme.motionFast } }
                         }
                         Rectangle { visible: !documentTab.current && documentTab.index+1!==root.tabWorkspace.activeIndex && !tabMouse.containsMouse; anchors.right: parent.right; y: 16; width: 1; height: 16; color: Theme.lineStrong }
                         MouseArea {
@@ -514,7 +517,7 @@ ApplicationWindow {
                                 onActiveFocusChanged: if(!activeFocus) documentTab.finishRename(true)
                             }
                             Text { id: tabTitle; visible: !documentTab.renaming; text: documentTab.pendingName || documentTab.modelData.name; Layout.fillWidth: true; elide: Text.ElideMiddle; color: documentTab.current ? Theme.ink : Theme.inkSoft; font.pixelSize: 12; font.weight: documentTab.current ? Font.DemiBold : Font.Normal }
-                            ActionButton { objectName: "closeTab"+documentTab.index; glyph: "close"; compact: true; implicitWidth: 24; implicitHeight: 24; hint: "탭 닫기 · Ctrl+W"; enabled: root.tabActionsEnabled; opacity: documentTab.current || tabMouse.containsMouse || hovered ? 1 : 0; onClicked: root.tabWorkspace.closeId(documentTab.modelData.id) }
+                            ActionButton { objectName: "closeTab"+documentTab.index; glyph: "close"; compact: true; implicitWidth: 24; implicitHeight: 24; hint: "탭 닫기 · Ctrl+W"; enabled: root.tabActionsEnabled; opacity: documentTab.current || tabMouse.containsMouse || hovered || visualFocus ? 1 : 0; onClicked: root.tabWorkspace.closeId(documentTab.modelData.id) }
                         }
                     }
                 }
@@ -752,6 +755,9 @@ ApplicationWindow {
                 }
                 ListView {
                     id: thumbs; objectName: "thumbnailList"
+                    // Previews never animate: immediate selection/geometry/image updates.
+                    highlightMoveDuration: 0; highlightResizeDuration: 0
+                    boundsBehavior: Flickable.StopAtBounds
                     visible: root.sidebarView==="pages" || root.searchOpen
                     Layout.fillWidth: true; Layout.fillHeight: true; clip: true
                     model: root.switching ? 0 : pdf.document.count; spacing: 12; topMargin: 4; bottomMargin: 16
@@ -852,7 +858,7 @@ ApplicationWindow {
         }
 
         Rectangle {
-            id: workspace; Layout.fillWidth: true; Layout.fillHeight: true; color: root.focusReading ? root.focusBackdrop : Theme.canvas
+            id: workspace; Layout.fillWidth: true; Layout.fillHeight: true; color: root.focusReading ? root.focusBackdrop : root.hasDocument ? Theme.canvas : Theme.surface
             TapHandler { onPressedChanged: if(pressed) { if(textDialog.visible) root.commitEdit(null); pages.forceActiveFocus(); } }
             ListView {
                 id: pages; objectName: "pageList"; anchors.fill: parent; clip: true
@@ -890,6 +896,7 @@ ApplicationWindow {
             ScrollInput {
                 controller: root.pdf
                 objectName: "pageScrollInput"; anchors.fill: parent; view: pages; visible: root.hasDocument
+                onInteractionStarted: { navigationTimer.stop(); root.pendingNavigation=null; root.restoring=false; }
                 onZoomRequested: function(amount) { root.zoomBy(amount); }
             }
             // Focus reading controls: appear when the pointer nears the bottom edge.
@@ -907,7 +914,7 @@ ApplicationWindow {
                     width: focusRow.implicitWidth+28; height: 48; radius: 24
                     color: Theme.raised; border.color: Theme.line
                     opacity: focusControls.revealed ? 1 : 0; visible: opacity>0
-                    Behavior on opacity { NumberAnimation { duration: 180 } }
+                    Behavior on opacity { NumberAnimation { duration: Theme.motionNormal; easing.type: Easing.OutCubic } }
                     readonly property color ink: Theme.ink
                     RowLayout {
                         id: focusRow; anchors.centerIn: parent; spacing: 12
@@ -940,7 +947,7 @@ ApplicationWindow {
                     anchors.horizontalCenter: parent.horizontalCenter; anchors.top: parent.top; anchors.topMargin: 18
                     text: "집중 읽기 · 아래쪽에 마우스를 올리면 조절 막대가 나와요 · Esc로 나가기"
                     color: root.focusTone==="paper" ? "#5d625e" : "#b8bdb9"; font.pixelSize: 12
-                    opacity: focusIntro.running ? 1 : 0; Behavior on opacity { NumberAnimation { duration: 400 } }
+                    opacity: focusIntro.running ? 1 : 0; Behavior on opacity { NumberAnimation { duration: Theme.reducedMotion ? 0 : 400 } }
                 }
             }
             Flickable {
@@ -952,8 +959,25 @@ ApplicationWindow {
                 ColumnLayout {
                     id: startColumn; width: Math.min(560, startScreen.width-48)
                     x: (startScreen.width-width)/2; y: Math.max(40,(startScreen.height-implicitHeight)/2-20); spacing: 0
-                    // Just the name and the two ways in.
-                    Text { objectName: "startWordmark"; text: "윤DF"; Layout.alignment: Qt.AlignHCenter; font.pixelSize: 56; font.weight: Font.Bold; font.letterSpacing: -1; color: Theme.ink }
+                    Image {
+                        id: welcomeLogo; objectName: "welcomeLogo"
+                        Layout.alignment: Qt.AlignHCenter; Layout.preferredWidth: 144; Layout.preferredHeight: 144
+                        source: "../assets/icon.png"; sourceSize.width: 288; sourceSize.height: 288
+                        fillMode: Image.PreserveAspectFit; mipmap: true
+                        Connections { target: root; function onHasDocumentChanged() { if (root.hasDocument) welcomeMotion.complete(); } }
+                        Connections { target: Theme; function onReducedMotionChanged() { if (Theme.reducedMotion) welcomeMotion.complete(); } }
+                        Accessible.role: Accessible.Graphic; Accessible.name: "윤DF 문서 로고"
+                        // Runs once. Opening a document or reducing motion completes it immediately.
+                        ParallelAnimation {
+                            id: welcomeMotion
+                            Component.onCompleted: if (!root.hasDocument && !Theme.reducedMotion) start()
+                            NumberAnimation { target: welcomeLogo; property: "opacity"; from: 0; to: 1; duration: 360; easing.type: Easing.OutCubic }
+                            NumberAnimation { target: welcomeLogo; property: "scale"; from: .96; to: 1; duration: 360; easing.type: Easing.OutCubic }
+                            onStopped: { welcomeLogo.opacity=1; welcomeLogo.scale=1; }
+                        }
+                    }
+                    Text { objectName: "startWordmark"; text: "윤DF"; Layout.alignment: Qt.AlignHCenter; Layout.topMargin: 4; font.pixelSize: 34; font.weight: Font.DemiBold; font.letterSpacing: -1; color: Theme.ink }
+                    Text { text: "읽고, 적고, 다듬는 나만의 PDF 작업실"; Layout.alignment: Qt.AlignHCenter; Layout.topMargin: 10; font.pixelSize: 14; color: Theme.inkMuted }
                     RowLayout {
                         Layout.alignment: Qt.AlignHCenter; spacing: 10; Layout.topMargin: 28
                         ActionButton { glyph: "open"; text: "PDF 열기"; primary: true; implicitWidth: 136; implicitHeight: 42; enabled: !pdf.busy; onClicked: pdf.chooseOpen() }
@@ -975,14 +999,14 @@ ApplicationWindow {
                                 delegate: ItemDelegate {
                                     id: recentRow; required property var modelData; required property int index
                                     objectName: "recentFile"+index
-                                    width: recentColumn.width; height: 52
+                                    width: recentColumn.width; height: 60
                                     enabled: pdf && !pdf.busy
                                     ToolTip.visible: hovered; ToolTip.delay: 800; ToolTip.text: modelData.path
                                     background: Rectangle { radius: Theme.radius; color: recentRow.hovered ? Theme.hover : "transparent" }
                                     contentItem: RowLayout {
                                         spacing: 12
                                         Rectangle {
-                                            Layout.preferredWidth: 30; Layout.preferredHeight: 36; radius: 3; color: Theme.dark ? "#2b322e" : "#f3f5f1"; border.color: Theme.lineStrong
+                                            Layout.preferredWidth: 30; Layout.preferredHeight: 36; radius: 3; color: Theme.accentSoft; border.color: Theme.lineStrong
                                             Text { anchors.centerIn: parent; text: "PDF"; font.pixelSize: 8; font.weight: Font.Bold; color: Theme.accentInk }
                                         }
                                         ColumnLayout {
@@ -994,7 +1018,7 @@ ApplicationWindow {
                                                     : (recentRow.modelData.page>0 ? (recentRow.modelData.page+1)+"페이지까지 읽음 · " : "") + recentRow.modelData.path
                                             }
                                         }
-                                        ActionButton { glyph: "close"; compact: true; hint: "목록에서 빼기"; opacity: recentRow.hovered || hovered ? 1 : 0; onClicked: library.forget(recentRow.modelData.path) }
+                                        ActionButton { glyph: "close"; compact: true; hint: "목록에서 빼기"; opacity: recentRow.hovered || hovered || visualFocus ? 1 : 0; onClicked: library.forget(recentRow.modelData.path) }
                                     }
                                     onClicked: root.tabWorkspace ? root.tabWorkspace.openRecent(modelData.path) : pdf.openPath(modelData.path)
                                 }
@@ -1451,6 +1475,7 @@ ApplicationWindow {
                     ActionButton { objectName: "defaultAppsButton"; text: "기본 PDF 앱 설정"; onClicked: { settingsDialog.close(); pdf.openDefaultAppsSettings(); } }
                     Text { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "Windows 설정에서 .pdf의 앱을 윤DF로 선택하면 PDF를 더블클릭해 열 수 있어요."; color: Theme.inkMuted; font.pixelSize: 13 }
                 }
+                Switch { objectName: "reducedMotionSwitch"; text: "움직임 줄이기"; checked: pdf.reducedMotion; onToggled: pdf.setReducedMotion(checked) }
                 Text { text: "화면 테마"; color: Theme.ink }
                 ComboBox {
                     objectName: "themeChoice"; Layout.fillWidth: true

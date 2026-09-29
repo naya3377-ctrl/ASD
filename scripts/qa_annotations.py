@@ -35,7 +35,7 @@ def main():
         p.insert_text((50,520),'Comments stay editable inside the PDF.',fontname="Review",fontsize=15,color=(.40,.47,.40))
         p.insert_text((50,745),'BICHAEK PDF / ANNOTATION REVIEW',fontname="Review",fontsize=10,color=(.55,.61,.53))
         doc.save(source)
-    QQuickStyle.setStyle('Basic');app=QApplication([])
+    QQuickStyle.setStyle(os.environ.get('YOONDF_QA_STYLE','Basic'));app=QApplication([])
     QFontDatabase.addApplicationFontFromData(QByteArray(fitz.Font('korea').buffer))
     warnings=[]
     def log(kind,context,message):

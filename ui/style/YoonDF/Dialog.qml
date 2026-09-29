@@ -6,6 +6,8 @@ import QtQuick.Controls.Basic as B
 import "../.."
 B.Dialog {
     id: control
+    enter: Transition { NumberAnimation { property: "opacity"; from: 0; to: 1; duration: Theme.motionNormal; easing.type: Easing.OutCubic } }
+    exit: Transition { } // Release popup/modal input immediately on close.
     padding: 20; topPadding: 8
     font.pixelSize: 13
     background: Item {

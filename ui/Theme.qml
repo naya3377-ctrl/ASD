@@ -7,15 +7,18 @@ import QtQuick
 QtObject {
     id: theme
     property string mode: "system"
+    property bool reducedMotion: false
+    readonly property int motionFast: reducedMotion ? 0 : 120
+    readonly property int motionNormal: reducedMotion ? 0 : 180
     readonly property bool dark: mode === "dark" || (mode === "system" && Qt.styleHints.colorScheme === Qt.ColorScheme.Dark)
 
     // Surfaces, from the back of the window to the front, after Apple's
     // system colours: one unified light grey for title, tabs and toolbar,
     // white content, and Apple's label and separator greys.
-    readonly property color canvas:     dark ? "#161618" : "#ececef"   // behind the pages
-    readonly property color chrome:     dark ? "#2a2a2c" : "#f5f5f7"   // title bar, tabs, toolbar
+    readonly property color canvas:     dark ? "#161618" : "#f2f3f5"   // behind the pages
+    readonly property color chrome:     dark ? "#2a2a2c" : "#fafafb"   // title bar, tabs, toolbar
     readonly property color surface:    dark ? "#1e1e20" : "#ffffff"   // panels
-    readonly property color surfaceAlt: dark ? "#3a3a3c" : "#e8e8ed"   // segmented controls
+    readonly property color surfaceAlt: dark ? "#3a3a3c" : "#eff0f3"   // segmented controls
     readonly property color raised:     dark ? "#636366" : "#ffffff"   // selected segment, cards
     readonly property color field:      dark ? "#1c1c1e" : "#ffffff"
     readonly property color line:       dark ? "#38383a" : "#e5e5ea"
@@ -30,7 +33,7 @@ QtObject {
     // Accent colour, chosen in Settings: Apple's system colours [light, dark].
     property string accentName: "blue"
     readonly property var accents: ({
-        blue:     { label: "파랑", light: "#007aff", dark: "#0a84ff" },
+        blue:     { label: "파랑", light: "#0078d4", dark: "#0a84ff" },
         purple:   { label: "보라", light: "#af52de", dark: "#bf5af2" },
         pink:     { label: "분홍", light: "#ff2d55", dark: "#ff375f" },
         red:      { label: "빨강", light: "#ff3b30", dark: "#ff453a" },
@@ -63,9 +66,9 @@ QtObject {
     readonly property color pageEdge:   dark ? "#00000000" : "#d8d8dd"
     readonly property color shadow:     dark ? "#66000000" : "#1e000000"
 
-    readonly property int radius: 8          // buttons, fields
+    readonly property int radius: 10          // buttons, fields
     readonly property int radiusSmall: 6
-    readonly property int radiusLarge: 12    // sheets, popovers, cards
+    readonly property int radiusLarge: 16    // sheets, popovers, cards
 
     // The accent at a given opacity, for fills over the page.
     function tint(alpha) { return Qt.rgba(accent.r, accent.g, accent.b, alpha); }

@@ -31,7 +31,7 @@ def main():
                 if i==80:page.insert_text((80,700),'Another Needle in the same page',fontsize=18)
         doc.save(fixture)
     second=out/'Design Notes.pdf';shutil.copy2(root/'samples/sample.pdf',second)
-    QQuickStyle.setStyle('Basic');app=QApplication([])
+    QQuickStyle.setStyle(os.environ.get('YOONDF_QA_STYLE','Basic'));app=QApplication([])
     QFontDatabase.addApplicationFontFromData(QByteArray(fitz.Font('korea').buffer))
     warnings=[]
     def qt_message(kind,context,message):

@@ -135,7 +135,7 @@ Rectangle {
                 height: cardLayout.implicitHeight+20; radius: Theme.radius+2
                 color: selected ? Theme.accentSoft : cardHover.hovered ? Theme.hover : Theme.raised
                 border.color: selected ? Theme.accent : Theme.line; border.width: selected ? 1.5 : 1
-                Behavior on color { ColorAnimation { duration: 120 } }
+                Behavior on color { ColorAnimation { duration: Theme.motionFast } }
                 HoverHandler { id: cardHover; onHoveredChanged: panel.hoveredItem = hovered ? card.modelData : (panel.hoveredItem === card.modelData ? null : panel.hoveredItem) }
                 Rectangle { x: 0; y: 8; width: 3; height: parent.height-16; radius: 2; color: card.modelData.color || Theme.inkFaint; visible: !card.modelData.reply }
                 TapHandler {

@@ -44,7 +44,7 @@ def main():
 
     relay = InstanceRelay()
     assert relay.start_or_forward([paths[0]])
-    QQuickStyle.setStyle('Basic')
+    QQuickStyle.setStyle(os.environ.get('YOONDF_QA_STYLE','Basic'))
     app = QApplication([])
     QFontDatabase.addApplicationFontFromData(QByteArray(fitz.Font('korea').buffer))
     warnings = []

@@ -39,6 +39,8 @@ Button {
         }
     }
     background: Rectangle {
+        scale: control.down ? .97 : 1
+        Behavior on scale { NumberAnimation { duration: Theme.motionFast; easing.type: Easing.OutCubic } }
         radius: Theme.radius
         color: control.primary ? (control.down ? Theme.accentPressed : control.hovered ? Theme.accentHover : Theme.accent)
              : control.segmented ? (control.active ? Theme.raised : control.down ? Theme.pressed : control.hovered ? Theme.hover : "transparent")
@@ -46,7 +48,7 @@ Button {
              : control.outlined ? Theme.raised : "transparent"
         border.width: control.outlined || control.visualFocus || (control.segmented && control.active) ? 1 : 0
         border.color: control.visualFocus ? Theme.focusRing : control.segmented ? Theme.line : Theme.lineStrong
-        Behavior on color { ColorAnimation { duration: 90 } }
+        Behavior on color { ColorAnimation { duration: Theme.motionFast; easing.type: Easing.OutCubic } }
     }
     ToolTip.visible: hovered && hint.length>0
     ToolTip.text: hint; ToolTip.delay: 550

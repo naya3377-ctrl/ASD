@@ -6,9 +6,11 @@ MouseArea {
     required property var view
     property bool allowZoom: true
     signal zoomRequested(real amount)
+    signal interactionStarted()
     acceptedButtons: Qt.NoButton
     scrollGestureEnabled: true
     onWheel: function(wheel) {
+        interactionStarted();
         if (allowZoom && (wheel.modifiers & Qt.ControlModifier)) {
             var amount = wheel.angleDelta.y ? wheel.angleDelta.y/120 : wheel.pixelDelta.y/60;
             zoomRequested(Math.pow(1.12,amount));

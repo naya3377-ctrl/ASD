@@ -65,7 +65,7 @@ def run_primary(relay):
     app.setApplicationVersion(__version__)
     app.setFont(QFont("Malgun Gothic" if os.name == "nt" else "Noto Sans CJK KR", 10))
     root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent.parent))
-    app.setWindowIcon(QIcon(str(root / "assets" / "icon.svg")))
+    app.setWindowIcon(QIcon(str(root / "assets" / "icon.ico")))
     images = Images()
     library = Library(preferences)
     documents = Documents(images)

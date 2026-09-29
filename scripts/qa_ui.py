@@ -21,7 +21,7 @@ def main():
     import fitz
     root=Path(__file__).resolve().parent.parent
     output=root/"test-output";output.mkdir(exist_ok=True)
-    QQuickStyle.setStyle("Basic")
+    QQuickStyle.setStyle(os.environ.get("YOONDF_QA_STYLE","Basic"))
     app=QApplication([])
     QFontDatabase.addApplicationFontFromData(QByteArray(fitz.Font("korea").buffer))
     images=Images();bridge=Bridge(images)

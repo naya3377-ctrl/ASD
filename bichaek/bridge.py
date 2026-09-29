@@ -531,6 +531,15 @@ class Bridge(QObject):
             self.preferences.setValue("themeMode", value)
             self.preferencesChanged.emit()
 
+    @Property(bool, notify=preferencesChanged)
+    def reducedMotion(self):
+        return self.preferences.value("reducedMotion", False, type=bool)
+
+    @Slot(bool)
+    def setReducedMotion(self, value):
+        self.preferences.setValue("reducedMotion", bool(value))
+        self.preferencesChanged.emit()
+
     ACCENTS = ("blue", "purple", "pink", "red", "orange", "green", "graphite")
 
     @Property(str, notify=preferencesChanged)

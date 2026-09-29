@@ -38,6 +38,8 @@ B.ComboBox {
         Rectangle { anchors.fill: parent; radius: Theme.radius; color: control.pressed ? Theme.pressed : control.hovered ? (Theme.dark ? "#444446" : "#fafafc") : (Theme.dark ? "#3a3a3c" : "#ffffff"); border.width: 1; border.color: control.visualFocus ? Theme.focusRing : Theme.lineStrong }
     }
     popup: B.Popup {
+        enter: Transition { NumberAnimation { property: "opacity"; from: 0; to: 1; duration: Theme.motionFast } }
+        exit: Transition { } // Release popup/modal input immediately on close.
         y: control.height + 4; width: Math.max(control.width, 160)
         implicitHeight: Math.min(contentItem.implicitHeight + 10, 360)
         padding: 5

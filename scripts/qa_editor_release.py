@@ -33,7 +33,7 @@ def main():
             p.insert_text((40,350),f'Facing Needle {i+1}',fontname='Original',fontsize=18)
             if i==0:p.insert_image([60,150,300,270],filename=str(png))
         doc.save(source);doc.save(second)
-    QQuickStyle.setStyle('Basic');app=QApplication([])
+    QQuickStyle.setStyle(os.environ.get('YOONDF_QA_STYLE','Basic'));app=QApplication([])
     QFontDatabase.addApplicationFontFromData(QByteArray(fitz.Font('korea').buffer))
     warnings=[]
     def log(kind,context,message):

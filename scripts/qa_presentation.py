@@ -39,7 +39,7 @@ def main():
         doc[0].insert_link({'kind':fitz.LINK_GOTO,'from':fitz.Rect(62,230,230,280),'page':7,'to':fitz.Point(0,0)})
         doc[0].insert_link({'kind':fitz.LINK_URI,'from':fitz.Rect(62,290,230,330),'uri':'https://example.com/yoondf'})
         doc.save(fixture)
-    QQuickStyle.setStyle('Basic');app=QApplication([])
+    QQuickStyle.setStyle(os.environ.get('YOONDF_QA_STYLE','Basic'));app=QApplication([])
     QFontDatabase.addApplicationFontFromData(QByteArray(fitz.Font('korea').buffer))
     warnings=[]
     def message(kind,context,text):

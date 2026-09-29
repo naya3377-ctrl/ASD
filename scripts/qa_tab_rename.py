@@ -30,8 +30,11 @@ def main():
     from PySide6.QtTest import QTest
     from bichaek.bridge import Images
     from bichaek.tabs import Documents
-    out=root/'test-output';out.mkdir(exist_ok=True);folder=out/'rename';import shutil;shutil.rmtree(folder,ignore_errors=True);folder.mkdir();first=folder/'첫 문서.pdf';second=folder/'둘째 문서.pdf';build(first,3);build(second,2)
-    QQuickStyle.setStyle('Basic');app=QApplication([])
+    out=root/'test-output';out.mkdir(exist_ok=True)
+    import tempfile
+    rename_work=tempfile.TemporaryDirectory(prefix='rename-',dir=out)
+    folder=Path(rename_work.name);first=folder/'첫 문서.pdf';second=folder/'둘째 문서.pdf';build(first,3);build(second,2)
+    QQuickStyle.setStyle(os.environ.get('YOONDF_QA_STYLE','Basic'));app=QApplication([])
     warnings=[];qInstallMessageHandler(lambda k,c,m: warnings.append(m) if 'file:' in m else None)
     images=Images();docs=Documents(images)
     engine=QQmlApplicationEngine();engine.addImageProvider('pages',images)
@@ -95,6 +98,15 @@ def main():
         error_box=w.findChild(QObject,'errorDialog')   # the refused name above
         if error_box and error_box.property('visible'): C.QMetaObject.invokeMethod(error_box,'close')
         wait(lambda:w.property('dialogsClear'))
+        # Switching away while a rename draft is active must never rename the destination tab.
+        title_click(0);wait(lambda:field.isVisible())
+        field.setProperty('text','전환 중 이름')
+        second_before=docs._tabs[1].document['path']
+        docs.activate(1);QTest.qWait(500)
+        assert docs._tabs[1].document['path']==second_before, 'Rename draft renamed a different tab'
+        assert Path(second_before).exists(), 'Switching tabs moved the wrong file'
+        assert b.document['name']=='편집 중.pdf', 'Leaving a tab should cancel its name draft'
+        docs.activate(0);wait(lambda:docs.activeBridge is b)
         find('pageList').forceActiveFocus()
         start=docs.activeBridge
         QTest.keyClick(w,Qt.Key_PageDown,Qt.ControlModifier);wait(lambda:docs.activeBridge is not start)
@@ -115,7 +127,7 @@ def main():
         print('PASS: click current tab to rename; Enter applies on disk, Esc cancels, other tabs just switch; unsaved edits kept; taken names refused; close all tabs keeps the window; Ctrl+PgDn/PgUp, F2, Ctrl+F4')
     finally:
         for bridge in list(getattr(docs,'_tabs',[])): bridge._state['dirty']=False
-        w.setVisible(False);docs.shutdown();del engine
+        w.setVisible(False);docs.shutdown();del engine;rename_work.cleanup()
 
 
 if __name__=='__main__':

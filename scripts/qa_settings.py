@@ -23,7 +23,7 @@ def main():
     from bichaek.tabs import Documents
 
     root = Path(__file__).resolve().parent.parent
-    QQuickStyle.setStyle('Basic')
+    QQuickStyle.setStyle(os.environ.get('YOONDF_QA_STYLE','Basic'))
     app = QApplication([])
     QFontDatabase.addApplicationFontFromData(QByteArray(fitz.Font("korea").buffer))
     warnings = []

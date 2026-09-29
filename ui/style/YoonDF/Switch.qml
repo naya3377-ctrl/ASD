@@ -12,13 +12,14 @@ B.Switch {
         implicitWidth: 38; implicitHeight: 22
         x: control.leftPadding; y: control.topPadding + (control.availableHeight - height) / 2
         radius: 11
+        border.width: control.visualFocus ? 2 : 0; border.color: Theme.focusRing
         color: control.checked ? Theme.accent : Theme.surfaceAlt
-        Behavior on color { ColorAnimation { duration: 150 } }
+        Behavior on color { ColorAnimation { duration: Theme.motionFast } }
         Rectangle {
             x: control.checked ? parent.width - width - 2 : 2; y: 2
             width: 18; height: 18; radius: 9; color: "white"
             border.width: 1; border.color: "#14000000"
-            Behavior on x { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
+            Behavior on x { NumberAnimation { duration: Theme.motionFast; easing.type: Easing.OutCubic } }
         }
     }
     contentItem: Text {

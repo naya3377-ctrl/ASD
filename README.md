@@ -1,7 +1,7 @@
 # 윤DF · YoonDF
 
 Acrobat의 도구 구성과 Sumatra·미리보기의 간결한 읽기 화면을 참고한 오프라인 PDF 편집기입니다.
-**0.9.9 preview: Windows 10/11 x64 설치 파일 및 공개 소스. Windows 실기기 실행 검증은 아직 하지 않았습니다.**
+**1.0.4 소스 릴리스 · Windows 10/11 x64용. 이번 배포는 소스 ZIP이며 설치 EXE는 포함하지 않습니다. Windows 실기기 실행은 미검증입니다.**
 
 이 버전은 Python 3.12 + PySide6 / Qt Quick + PyMuPDF로 구현했습니다.
 MuPDF 연산은 별도 프로세스에서 수행하고, Qt Quick이 화면을 표시합니다.
@@ -11,7 +11,7 @@ C++ 전용 프로그램이나 Sumatra와 같은 시작 속도를 검증한 제�
 
 ### Windows 10/11, 64비트
 
-`YoonDF-Setup-0.9.9-x64.exe`를 더블클릭하고 설치를 완료합니다.
+Windows에서 `START_WINDOWS.cmd`로 소스를 실행할 수 있습니다. 설치 파일을 만들려면 `BUILD_WINDOWS.cmd`와 아래 빌드 설명을 참고하세요.
 시작 메뉴나 바탕 화면의 **윤DF**로 실행합니다.
 Python, Qt, PDF 엔진, 한국어·영어 OCR 데이터를 포함하며 설치·실행에 인터넷이 필요하지 않습니다.
 관리자 권한 없이 현재 사용자 계정에 설치됩니다.
@@ -43,7 +43,7 @@ Windows 설정에서 `.pdf`의 앱으로 **윤DF**를 선택하세요. Windows 1
 앱을 제거하면 함께 정리됩니다. 제거 전에는 열린 문서를 저장하고 모든 윤DF 창을 닫아 주세요.
 설정과 사용자가 저장한 PDF의 위치는 변경하지 않습니다.
 
-설치된 `versions/0.9.9-*/source/samples/sample.pdf`로 본문 수정과 페이지 편집을 시험할 수 있습니다.
+설치된 `versions/1.0.4-*/source/samples/sample.pdf`로 본문 수정과 페이지 편집을 시험할 수 있습니다.
 마지막 페이지는 OCR용 스캔입니다. 아래 명령은 소스를 개발할 때만 필요합니다.
 
 ### 소스 실행
@@ -57,6 +57,16 @@ python main.py
 python main.py path/to/document.pdf path/to/another.pdf
 ```
 
+
+## 1.0.4 변경 사항
+
+- 승인된 파란 문서형 **윤DF** 로고를 시작 화면, 앱 창, 실행 파일·바로가기·설치 프로그램의 아이콘 자산에 적용했습니다. 원본 PNG를 보존하며 ICO에 16–256px 해상도를 담았습니다.
+- 흰 시작 화면, 차분한 회색 도구 모음, `#0078D4` 강조색, 균일한 모서리와 여백을 적용했습니다. 메뉴·대화상자는 짧게 나타나고, 버튼은 눌림에 반응합니다.
+- **사이드바 페이지 미리보기에는 이동·확대·페이드 전환을 적용하지 않습니다.** 선택과 이미지 갱신은 즉시 반영하며 자동 위치 이동도 애니메이션 없이 수행합니다.
+- **설정 → 움직임 줄이기**를 추가했습니다. 이 설정은 저장되며 시작 로고와 메뉴·버튼 등의 장식적 전환을 끕니다.
+- 탭 이름을 입력하다 다른 탭으로 전환할 때 다른 파일이 이름 변경되는 버그를 수정했습니다. 원래 탭과 다른 대상으로 적용하지 않으며 탭을 떠나면 이름 입력을 취소합니다.
+- 링크·페이지 이동 직후 사용자가 휠을 돌려도 예약된 위치 복원이 화면을 다시 끌어당기던 문제를 수정했습니다. 직접 휠 조작이 시작되면 예약된 복원을 취소합니다.
+- 원본 1.0.3과 수정본 1.0.4는 별도 소스 ZIP으로 제공합니다. 검증 결과와 한계는 `docs/RELEASE_1.0.4.md`에 있습니다.
 
 ## 1.0.3 변경 사항
 
@@ -426,7 +436,9 @@ Actions 실행이 성공하면 Artifacts에서 설치 파일과 실행 폴더를
 ## 검증
 
 ```sh
+python -m pip install -r requirements-dev.txt
 python -m unittest discover -v
+python scripts/run_qa.py
 python scripts/qa_ui.py
 python scripts/qa_reader.py
 python scripts/qa_upgrade.py

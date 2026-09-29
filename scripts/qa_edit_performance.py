@@ -24,7 +24,7 @@ def main():
     for col in (38,312):
         for i in range(40):p.insert_text((col,50+i*12),text,fontname='K',fontsize=9)
     pdf.subset_fonts();pdf.save(source);pdf.close()
-    QQuickStyle.setStyle('Basic');app=QApplication([])
+    QQuickStyle.setStyle(os.environ.get('YOONDF_QA_STYLE','Basic'));app=QApplication([])
     QFontDatabase.addApplicationFontFromData(QByteArray(fitz.Font('korea').buffer))
     warnings=[];qInstallMessageHandler(lambda k,c,t:warnings.append(t) if 'file:' in t or 'ReferenceError' in t or 'TypeError' in t else None)
     images=Images();documents=Documents(images);b=documents.activeBridge;auto=b.automaticOcr;b.setAutomaticOcr(False)

@@ -18,10 +18,13 @@ B.Button {
     }
     background: Rectangle {
         implicitWidth: 80
+        scale: control.down ? .97 : 1
+        Behavior on scale { NumberAnimation { duration: Theme.motionFast; easing.type: Easing.OutCubic } }
+        Behavior on color { ColorAnimation { duration: Theme.motionFast } }
         radius: Theme.radius
         color: control.highlighted ? (control.down ? Theme.accentPressed : control.hovered ? Theme.accentHover : Theme.accent)
              : control.down ? Theme.pressed : control.hovered ? Theme.hover : Theme.raised
-        border.width: control.highlighted ? 0 : 1
+        border.width: control.visualFocus ? 2 : control.highlighted ? 0 : 1
         border.color: control.visualFocus ? Theme.focusRing : Theme.lineStrong
     }
 }
