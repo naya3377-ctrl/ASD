@@ -22,6 +22,14 @@ Item {
     Rectangle { anchors.fill: parent; color: "white"; border.color: Theme.accent; border.width: 2 }
     TextArea {
         id: input; objectName: editor.editing ? "replacementText" : "inactiveInlineText"+pageNumber
+        Keys.onShortcutOverride: function(event) {
+            if(event.key===Qt.Key_S && (event.modifiers & Qt.ControlModifier)) event.accepted=true;
+        }
+        Keys.onPressed: function(event) {
+            if(event.key===Qt.Key_S && (event.modifiers & Qt.ControlModifier)) {
+                event.accepted=true; editor.session.save(!!(event.modifiers & Qt.ShiftModifier));
+            }
+        }
         anchors.fill: parent; padding: 0; leftPadding: 1; rightPadding: 1
         background: Item { }
         text: editor.editing ? session.text : ""

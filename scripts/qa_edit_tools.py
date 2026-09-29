@@ -98,8 +98,20 @@ def main():
         item=find('deleteImageItem');click(item);wait(lambda:not b.busy and len(images(3))==0)
         # Undo brings the last one back
         b.undo();wait(lambda:not b.busy and len(images(3))==1)
+        # Ctrl+S while a paragraph is open: the edit is applied, then saved.
+        import fitz
+        b.save(False);wait(lambda:not b.busy and not b.document['dirty'])
+        w.useTool('editText');b.loadBlocks(3);wait(lambda:bool(b.blocksAt(3)))
+        block=next(x for x in b.blocksAt(3) if 'heading' in x['text'])
+        b.editBlock(block);wait(lambda:find('replacementText') is not None and not b.liveEditor.loading)
+        field=find('replacementText');field.forceActiveFocus();QTest.keyClick(w,Qt.Key_End,Qt.ControlModifier)
+        for ch in ' done':QTest.keyClick(w,ch)
+        wait(lambda:b.liveEditor.canApply)
+        QTest.keyClick(w,Qt.Key_S,Qt.ControlModifier)
+        wait(lambda:not b.busy and not b.document['dirty'] and not w.findChild(QObject,'textEditorSession').property('visible'))
+        with fitz.open(pdf) as saved: assert 'heading done' in ' '.join(saved[3].get_text().split()),saved[3].get_text()
         assert not warnings,warnings
-        print('PASS: text box drawn by vertical drag on a scrolled page; image removed by button, Delete key and right-click menu; right click cancels a drag; undo restores')
+        print('PASS: Ctrl+S while editing applies then saves; text box drawn by vertical drag on a scrolled page; image removed by button, Delete key and right-click menu; right click cancels a drag; undo restores')
     finally:
         b._state['dirty']=False;w.setVisible(False);docs.shutdown();del engine
 

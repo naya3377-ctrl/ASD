@@ -41,7 +41,7 @@ ApplicationWindow {
     property bool closeAllRequested: false
     function quitApplication() { closeAllRequested=true; close(); }
     property bool restoring: false
-    property bool dialogsClear: !textDialog.visible && !annotationEditor.visible && !mergeDialog.visible && !ocrDialog.visible && !settingsDialog.visible && !errorDialog.visible && !aboutDialog.visible && !closeChoice.visible && !(tabWorkspace && tabWorkspace.closing)
+    property bool dialogsClear: !textDialog.visible && !annotationEditor.visible && !mergeDialog.visible && !ocrDialog.visible && !settingsDialog.visible && !errorDialog.visible && !aboutDialog.visible && !closeChoice.visible && !shortcutsDialog.visible && !(tabWorkspace && tabWorkspace.closing)
     property bool tabActionsEnabled: dialogsClear && !presenting
     property bool externalOpenReady: dialogsClear && !readerMenuOpen && !tabMenu.visible && !switching
     property bool externalOpenPending: typeof externalRequests !== "undefined" && externalRequests.pending
@@ -253,16 +253,33 @@ ApplicationWindow {
     // then opens it, located again after the page's text boxes refresh.
     property var pendingEditPoint: null
     property bool commitWhenReady: false
+    // Save while a paragraph is open: finish any IME composition, apply the
+    // edit, then save once the engine confirms. Cancel or a failed apply drops
+    // the pending save and keeps the draft.
+    property int pendingEditSave: 0   // 1 save, 2 save as
+    function finishEditSave() {
+        if(!pendingEditSave) return;
+        var saveAs=pendingEditSave===2; pendingEditSave=0;
+        Qt.callLater(function(){ pdf.save(saveAs); });
+    }
+    function saveDocument(saveAs) {
+        if(pdf.busy) return;
+        if(!textDialog.visible) { pdf.save(saveAs); return; }
+        pendingEditSave=saveAs ? 2 : 1;
+        Qt.inputMethod.commit();
+        Qt.callLater(function(){ root.commitEdit(null); });
+    }
+    readonly property bool canSave: root.hasDocument && !pdf.busy && !pdf.ocrBusy && (root.tabActionsEnabled || textDialog.visible)
     function commitEdit(point) {
         if(!textDialog.visible || pdf.busy) return;
         pendingEditPoint=point || null;
         var live=pdf.liveEditor;
         if(textDialog.targetData.mode==="replace") {
             if(live.loading) { commitWhenReady=true; return; }
-            if(!live.edited) { textDialog.close(); Qt.callLater(root.openPendingEdit); return; }
+            if(!live.edited) { textDialog.close(true); root.finishEditSave(); Qt.callLater(root.openPendingEdit); return; }
             if(live.canApply) { pdf.applyText(textDialog.targetData,textDialog.text,textDialog.fontSize,textDialog.areaHeight); return; }
-            pendingEditPoint=null;   // keep the draft; the status bar says what to fix
-        } else if(!textDialog.text.trim().length) { textDialog.close(); Qt.callLater(root.openPendingEdit); }
+            pendingEditSave=0; pendingEditPoint=null;   // keep the draft; the status bar says what to fix
+        } else if(!textDialog.text.trim().length) { textDialog.close(true); root.finishEditSave(); Qt.callLater(root.openPendingEdit); }
         else pdf.applyText(textDialog.targetData,textDialog.text,textDialog.fontSize,textDialog.areaHeight);
     }
     function openPendingEdit() {
@@ -335,10 +352,18 @@ ApplicationWindow {
 
     Shortcut { sequence: "Escape"; enabled: (textDialog.visible || annotationEditor.visible) && !pdf.busy && !errorDialog.visible && !fontChoice.popupOpen && !draftClose.visible; onActivated: { if(textDialog.visible) textDialog.close(); else annotationEditor.close(); } }
     Shortcut { sequence: "Ctrl+Shift+Q"; enabled: !pdf.busy && !draftClose.visible; onActivated: root.quitApplication() }
-    Shortcut { sequence: "Ctrl+Tab"; enabled: !!root.tabWorkspace && root.tabActionsEnabled; onActivated: root.tabWorkspace.cycle(1) }
-    Shortcut { sequence: "Ctrl+Shift+Tab"; enabled: !!root.tabWorkspace && root.tabActionsEnabled; onActivated: root.tabWorkspace.cycle(-1) }
-    Shortcut { sequence: "Ctrl+W"; enabled: !!root.tabWorkspace && !pdf.busy && !draftClose.visible; onActivated: {if(textDialog.visible || annotationEditor.visible)root.close();else root.tabWorkspace.closeTab(root.tabWorkspace.activeIndex);} }
-    Shortcut { sequence: "Ctrl+T"; enabled: !!root.tabWorkspace && root.tabActionsEnabled; onActivated: root.tabWorkspace.newTab() }
+    Shortcut { sequences: ["Ctrl+Tab","Ctrl+PgDown"]; enabled: !!root.tabWorkspace && root.tabActionsEnabled; onActivated: root.tabWorkspace.cycle(1) }
+    Shortcut { sequences: ["Ctrl+Shift+Tab","Ctrl+PgUp"]; enabled: !!root.tabWorkspace && root.tabActionsEnabled; onActivated: root.tabWorkspace.cycle(-1) }
+    // Ctrl+F4 is the Windows "close document" key, next to Chrome-style Ctrl+W.
+    Shortcut { sequences: ["Ctrl+W","Ctrl+F4"]; enabled: !!root.tabWorkspace && !pdf.busy && !draftClose.visible; onActivated: {if(textDialog.visible || annotationEditor.visible)root.close();else root.tabWorkspace.closeTab(root.tabWorkspace.activeIndex);} }
+    Shortcut { sequences: ["Ctrl+T","Ctrl+N"]; enabled: !!root.tabWorkspace && root.tabActionsEnabled; onActivated: root.tabWorkspace.newTab() }
+    Shortcut { sequences: ["Ctrl+Shift+W","Ctrl+Shift+F4"]; enabled: !!root.tabWorkspace && root.tabActionsEnabled; onActivated: root.tabWorkspace.closeAll() }
+    // F2 renames the current file, as in File Explorer.
+    Shortcut {
+        sequence: "F2"; enabled: !!root.tabWorkspace && root.tabActionsEnabled && !root.renamingTab
+        onActivated: { var tab=tabStrip.itemAtIndex(root.tabWorkspace.activeIndex); if(tab && tab.canRename) tab.startRename(); }
+    }
+    Shortcut { sequence: "Ctrl+G"; enabled: root.hasDocument && root.tabActionsEnabled; onActivated: { pageInput.forceActiveFocus(); pageInput.selectAll(); } }
     Shortcut { sequence: "F3"; enabled: root.hasDocument && root.tabActionsEnabled; onActivated: { root.searchOpen=true; root.sidebarOpen=true; pdf.findNext(searchInput.text,1); } }
     Shortcut { sequence: "Shift+F3"; enabled: root.hasDocument && root.tabActionsEnabled; onActivated: { root.searchOpen=true; root.sidebarOpen=true; pdf.findNext(searchInput.text,-1); } }
     Shortcut { sequences: ["F5","Ctrl+L"]; autoRepeat: false; enabled: root.hasDocument && root.dialogsClear; onActivated: root.togglePresentation() }
@@ -351,8 +376,8 @@ ApplicationWindow {
     Shortcut { sequence: StandardKey.Open; enabled: root.tabActionsEnabled; onActivated: pdf.chooseOpen() }
     Shortcut { sequence: StandardKey.Print; enabled: root.tabActionsEnabled && root.hasDocument && !pdf.busy && !pdf.ocrBusy; onActivated: pdf.printDocument() }
     Shortcut { sequence: StandardKey.SelectAll; enabled: root.tabActionsEnabled && root.tool === "read" && !root.typingText; onActivated: pdf.selectAllText() }
-    Shortcut { sequence: StandardKey.Save; enabled: root.tabActionsEnabled; onActivated: pdf.save(false) }
-    Shortcut { sequence: StandardKey.SaveAs; enabled: root.tabActionsEnabled; onActivated: pdf.save(true) }
+    Shortcut { sequence: StandardKey.Save; enabled: root.canSave; onActivated: root.saveDocument(false) }
+    Shortcut { sequence: StandardKey.SaveAs; enabled: root.canSave; onActivated: root.saveDocument(true) }
     Shortcut { sequences: [StandardKey.Undo]; enabled: root.tabActionsEnabled && (root.canEdit || root.canAnnotate) && pdf.document.canUndo; onActivated: pdf.undo() }
     Shortcut { sequences: [StandardKey.Redo]; enabled: root.tabActionsEnabled && (root.canEdit || root.canAnnotate) && pdf.document.canRedo; onActivated: pdf.redo() }
     Shortcut { sequence: StandardKey.Find; enabled: root.tabActionsEnabled; onActivated: { root.searchOpen = true; root.sidebarOpen = true; searchInput.forceActiveFocus(); } }
@@ -554,7 +579,7 @@ ApplicationWindow {
                 ActionButton { objectName: "printButton"; glyph: "print"; hint: "인쇄 · Ctrl+P"; enabled: root.tabActionsEnabled && root.hasDocument && pdf.document.printable && !pdf.busy && !pdf.ocrBusy; onClicked: pdf.printDocument() }
                 ToolSeparator {}
                 ActionButton { glyph: "open"; hint: "열기 · Ctrl+O"; enabled: root.tabActionsEnabled && !pdf.busy && !pdf.ocrBusy; onClicked: pdf.chooseOpen() }
-                ActionButton { objectName: "saveButton"; text: "저장"; primary: root.hasDocument && pdf.document.dirty; outlined: !(root.hasDocument && pdf.document.dirty); implicitWidth: 64; hint: "저장 · Ctrl+S"; enabled: root.tabActionsEnabled && root.hasDocument && !pdf.busy && !pdf.ocrBusy; onClicked: pdf.save(false) }
+                ActionButton { objectName: "saveButton"; text: "저장"; primary: root.hasDocument && pdf.document.dirty; outlined: !(root.hasDocument && pdf.document.dirty); implicitWidth: 64; hint: "저장 · Ctrl+S"; enabled: root.canSave; onClicked: root.saveDocument(false) }
                 ActionButton { objectName: "settingsButton"; glyph: "settings"; hint: "설정"; onClicked: settingsDialog.open() }
                 ActionButton {
                     id: moreButton; objectName: "moreButton"; glyph: "more"; hint: "더 보기"
@@ -566,6 +591,7 @@ ApplicationWindow {
                         MenuItem { text: "문자 인식 (OCR)…"; enabled: root.canEdit; onTriggered: { pdf.inspectOcr(); ocrDialog.open(); } }
                         MenuSeparator {}
                         MenuItem { text: Theme.dark ? "밝은 화면으로" : "어두운 화면으로"; onTriggered: pdf.setThemeMode(Theme.dark ? "light" : "dark") }
+                        MenuItem { objectName: "shortcutsMenuItem"; text: "단축키 · F1"; onTriggered: shortcutsDialog.open() }
                         MenuItem { text: "윤DF 정보"; onTriggered: aboutDialog.open() }
                     }
                 }
@@ -586,7 +612,7 @@ ApplicationWindow {
                 Text { text: textDialog.targetData.mode==="replace" ? "자동 줄바꿈" : "높이"; color: Theme.inkMuted }
                 TextField { visible: textDialog.targetData.mode!=="replace"; objectName: "inlineHeightInput"; Layout.preferredWidth: 62; text: textDialog.areaHeight.toFixed(0); validator: DoubleValidator { bottom:5; top:20000 } selectByMouse: true; onTextEdited: if(acceptableInput) textDialog.areaHeight=Number(text) }
                 Item { Layout.fillWidth: true }
-                ActionButton { objectName: "cancelTextButton"; text: "취소"; enabled: !pdf.busy; onClicked: {root.closeAfterEdit=false;textDialog.close();} }
+                ActionButton { objectName: "cancelTextButton"; text: "취소"; enabled: !pdf.busy; onClicked: {root.closeAfterEdit=false;root.pendingEditSave=0;textDialog.close();} }
                 ActionButton { objectName: "applyTextButton"; text: "적용"; primary: true; enabled: !pdf.busy && (textDialog.targetData.mode!=="replace" || pdf.liveEditor.canApply); onClicked: pdf.applyText(textDialog.targetData,textDialog.text,textDialog.fontSize,textDialog.areaHeight) }
             }
         }
@@ -1158,7 +1184,12 @@ ApplicationWindow {
                                 root.commitEdit(root.tool==="editText" ? {page:pageCell.index,x:mouse.x*s,y:mouse.y*s} : null);
                             }
                         }
-                        InlineTextEditor { session: textDialog; controller: root.pdf; pageNumber: pageCell.index; factor: paper.width/pageCell.pdfWidth }
+                        // Only the page being edited carries a live text editor.
+                        Loader {
+                            active: textDialog.visible && textDialog.targetData.mode==="replace" && textDialog.targetData.page===pageCell.index
+                            z: 60
+                            sourceComponent: InlineTextEditor { session: textDialog; controller: root.pdf; pageNumber: pageCell.index; factor: paper.width/pageCell.pdfWidth }
+                        }
                         LegacyTextEditor { session: textDialog; controller: root.pdf; pageNumber: pageCell.index; factor: paper.width/pageCell.pdfWidth }
                         ImageHandles {
                             anchors.fill: parent; z: 50; controller: root.pdf
@@ -1254,7 +1285,7 @@ ApplicationWindow {
         function onNavigateRequested(page,x,y) { root.jumpTo(page,x,y); }
         function onResumeRequested(page) { root.goPage(page); }
         function onOutlineRequested(page,y) { root.jumpToHeading(page,y); }
-        function onTextCommitted() { textDialog.close(); root.finishDraftClose(); Qt.callLater(root.openPendingEdit); }
+        function onTextCommitted() { textDialog.close(true); root.finishEditSave(); root.finishDraftClose(); Qt.callLater(root.openPendingEdit); }
         function onBlocksChanged() { if(root.pendingEditPoint) Qt.callLater(root.openPendingEdit); }
         function onAnnotationCommitted() { annotationEditor.close(); if(root.tool==="note") root.tool="read"; root.finishDraftClose(); }
         function onImageInserted() { root.useTool("imageMove"); }
@@ -1271,7 +1302,7 @@ ApplicationWindow {
 
     MergeDialog { id: mergeDialog; controller: root.pdf }
 
-    Connections { target: pdf.liveEditor; function onApplyFailed(){root.closeAfterEdit=false;} }
+    Connections { target: pdf.liveEditor; function onApplyFailed(){root.closeAfterEdit=false;root.pendingEditSave=0;root.commitWhenReady=false;root.pendingEditPoint=null;} }
     property bool closeAfterEdit: false
     function finishDraftClose() {
         if(!closeAfterEdit)return;
@@ -1302,12 +1333,54 @@ ApplicationWindow {
         property real areaHeight: 40
         property string fallbackFont: root.uiFontFamily
         onVisibleChanged: { pdf.setTextEditorVisible(visible); if(!visible) root.commitWhenReady=false; }
-        function close() { visible=false; }
+        function save(saveAs) { root.saveDocument(saveAs); }
+        function close(keepSave) { if(!keepSave) root.pendingEditSave=0; visible=false; }
         function compose(data) {
             if(visible) return;
             targetData=data; text=data.text || ""; fontSize=Number(data.size || 14);
             areaHeight=data.mode==="replace" ? data.rect[3]-data.rect[1]+10 : data.height;
             visible=true;
+        }
+    }
+
+    Shortcut { sequence: "F1"; enabled: root.dialogsClear; onActivated: shortcutsDialog.open() }
+    // Every keyboard shortcut in one place.
+    Dialog {
+        id: shortcutsDialog; objectName: "shortcutsDialog"; anchors.centerIn: parent; modal: true
+        width: Math.min(720, root.width-60); height: Math.min(620, root.height-60)
+        title: "단축키"; standardButtons: Dialog.Close; Component.onCompleted: standardButton(Dialog.Close).text = "닫기"
+        readonly property var groups: [
+            { title: "문서", keys: [["Ctrl+O","열기"],["Ctrl+S","저장 (편집 중이면 적용 후 저장)"],["Ctrl+Shift+S","다른 이름으로 저장"],["Ctrl+P","인쇄"],["Ctrl+F","문서 검색"],["F3 / Shift+F3","다음 / 이전 검색 결과"],["Ctrl+Z / Ctrl+Shift+Z","되돌리기 / 다시 실행"]] },
+            { title: "탭", keys: [["Ctrl+T / Ctrl+N","새 탭"],["Ctrl+W / Ctrl+F4","탭 닫기"],["Ctrl+Shift+W","모든 탭 닫기"],["Ctrl+Tab / Ctrl+PgDn","다음 탭"],["Ctrl+Shift+Tab / Ctrl+PgUp","이전 탭"],["F2","파일 이름 바꾸기"],["Ctrl+Shift+Q","프로그램 끝내기"]] },
+            { title: "보기", keys: [["← → / PgUp PgDn / Space","이전 / 다음 페이지"],["Home / End","처음 / 마지막 페이지"],["Ctrl+G","페이지 번호로 이동"],["Ctrl + / Ctrl -","확대 / 축소"],["Ctrl+0","너비 맞춤"],["F11","집중 읽기"],["F5 / Ctrl+L","슬라이드 쇼"],["Esc","나가기 · 취소"]] },
+            { title: "편집", keys: [["Alt+↑ / Alt+↓","선택한 페이지 위아래로"],["Delete","선택한 이미지 삭제"],["Ctrl+Enter","메모 적용"],["F1","이 창"]] }
+        ]
+        contentItem: ScrollView {
+            clip: true; contentWidth: availableWidth
+            GridLayout {
+                width: parent.width; columns: width > 560 ? 2 : 1; columnSpacing: 28; rowSpacing: 18
+                Repeater {
+                    model: shortcutsDialog.groups
+                    delegate: ColumnLayout {
+                        required property var modelData
+                        Layout.fillWidth: true; Layout.alignment: Qt.AlignTop; spacing: 6
+                        Text { text: modelData.title; font.pixelSize: 13; font.weight: Font.DemiBold; color: Theme.accentInk; Layout.bottomMargin: 2 }
+                        Repeater {
+                            model: modelData.keys
+                            delegate: RowLayout {
+                                required property var modelData
+                                Layout.fillWidth: true; spacing: 10
+                                Rectangle {
+                                    Layout.preferredWidth: keyText.implicitWidth+14; Layout.preferredHeight: 24; radius: Theme.radiusSmall
+                                    color: Theme.surfaceAlt; border.color: Theme.line
+                                    Text { id: keyText; anchors.centerIn: parent; text: modelData[0]; font.pixelSize: 11; font.weight: Font.DemiBold; color: Theme.ink }
+                                }
+                                Text { Layout.fillWidth: true; text: modelData[1]; font.pixelSize: 12; color: Theme.inkSoft; elide: Text.ElideRight }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -1356,7 +1429,7 @@ ApplicationWindow {
 
     Dialog {
         id: settingsDialog; objectName: "settingsDialog"; parent: Overlay.overlay; anchors.centerIn: parent; width: 490; modal: true; title: "설정"
-        standardButtons: Dialog.Ok
+        standardButtons: Dialog.Ok; Component.onCompleted: standardButton(Dialog.Ok).text = "확인"
         contentItem: ScrollView {
             id: settingsScroll; objectName: "settingsScroll"; clip: true
             implicitHeight: Math.min(settingsContent.implicitHeight, Math.max(200, root.height - 170))
@@ -1424,7 +1497,7 @@ ApplicationWindow {
 
     Dialog {
         id: aboutDialog; anchors.centerIn: parent; width: 650; height: 570; modal: true; title: "윤DF · " + Qt.application.version
-        standardButtons: Dialog.Ok
+        standardButtons: Dialog.Ok; Component.onCompleted: standardButton(Dialog.Ok).text = "확인"
         contentItem: ColumnLayout {
             Text { text: "Copyright © 2026 YoonDF contributors"; color: Theme.ink }
             Text { text: "AGPL-3.0-or-later · 이 라이선스에 따라 수정·재배포할 수 있습니다.\n보증 없이 제공됩니다. 전체 소스와 빌드 스크립트는 배포 압축파일에 포함됩니다."; wrapMode: Text.WordWrap; Layout.fillWidth: true; color: Theme.inkSoft; font.pixelSize: 13 }
@@ -1436,9 +1509,9 @@ ApplicationWindow {
     }
 
     Dialog {
-        id: errorDialog; anchors.centerIn: parent; width: 520; modal: true; title: "확인해 주세요"
+        id: errorDialog; objectName: "errorDialog"; anchors.centerIn: parent; width: 520; modal: true; title: "확인해 주세요"
         property string message: ""
-        standardButtons: Dialog.Ok
+        standardButtons: Dialog.Ok; Component.onCompleted: standardButton(Dialog.Ok).text = "확인"
         contentItem: Text { text: errorDialog.message; wrapMode: Text.WordWrap; color: Theme.ink; font.pixelSize: 14 }
     }
 }

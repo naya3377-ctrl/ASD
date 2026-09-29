@@ -14,6 +14,29 @@ FLAGS=int(QTextFormat.UserProperty)+3
 FALLBACK=int(QTextFormat.UserProperty)+5
 
 
+
+# Qt font registrations are shared by every editor and tab and kept until the
+# app exits. Removing one while a text layout or glyph cache still refers to
+# it can make Qt draw or save the wrong glyphs (seen as NUL characters when
+# editors were opened and closed in a row). A byte budget bounds the total.
+_FONT_REGISTRY={}
+_FONT_BYTES=0
+_FONT_BUDGET=192*1024*1024
+
+def register_font(data):
+    """Register a font program once per app; returns (family, QRawFont, id)."""
+    global _FONT_BYTES
+    key=hashlib.sha256(data).hexdigest()
+    if key not in _FONT_REGISTRY:
+        if _FONT_BYTES+len(data)>_FONT_BUDGET:raise ValueError('열어 둔 글꼴이 많아요. 문서를 저장하고 앱을 다시 열어 주세요.')
+        font_id=QFontDatabase.addApplicationFontFromData(QByteArray(data))
+        families=QFontDatabase.applicationFontFamilies(font_id)
+        if not families:raise ValueError('글꼴을 화면에 표시할 수 없어요. 다른 글꼴을 선택해 주세요.')
+        raw=QRawFont();raw.loadFromData(QByteArray(data),20,QFont.PreferNoHinting)
+        if not raw.isValid():raise ValueError('글꼴을 읽을 수 없어요. 다른 글꼴을 선택해 주세요.')
+        _FONT_REGISTRY[key]=(families[0],raw,font_id);_FONT_BYTES+=len(data)
+    return _FONT_REGISTRY[key]
+
 class TextEditor(QObject):
     changed=Signal()
     widthChanged=Signal()
@@ -74,12 +97,8 @@ class TextEditor(QObject):
     def _register(self,data):
         key=hashlib.sha256(data).hexdigest()
         if key not in self._registered:
-            if key not in self.ids:self.ids[key]=QFontDatabase.addApplicationFontFromData(QByteArray(data))
-            families=QFontDatabase.applicationFontFamilies(self.ids[key])
-            if not families:raise ValueError('글꼴을 화면에 표시할 수 없어요. 다른 글꼴을 선택해 주세요.')
-            raw=QRawFont();raw.loadFromData(QByteArray(data),20,QFont.PreferNoHinting)
-            if not raw.isValid():raise ValueError('글꼴을 읽을 수 없어요. 다른 글꼴을 선택해 주세요.')
-            self._registered[key]=(families[0],raw)
+            family,raw,font_id=register_font(data)
+            self.ids[key]=font_id;self._registered[key]=(family,raw)
         return self._registered[key]
     def _max_height(self):
         return self.target.get('pageHeight',20000)-self.target.get('rect',[0,0])[1]
@@ -364,7 +383,7 @@ class TextEditor(QObject):
         # QPdfWriter rounds its MediaBox to integer points. Round outward and
         # crop on insertion, otherwise stretching to the fractional target
         # silently changes character positions after applying the edit.
-        writer=QPdfWriter(buffer);writer.setResolution(72);writer.setPageSize(QPageSize(QSizeF(math.ceil(self._width),math.ceil(self._height)),QPageSize.Point));writer.setPageMargins(QMarginsF(0,0,0,0));writer.setCreator('YoonDF 0.9.16')
+        writer=QPdfWriter(buffer);writer.setResolution(72);writer.setPageSize(QPageSize(QSizeF(math.ceil(self._width),math.ceil(self._height)),QPageSize.Point));writer.setPageMargins(QMarginsF(0,0,0,0));writer.setCreator('YoonDF 1.0.1')
         painter=QPainter(writer)
         if not painter.isActive():raise ValueError('편집 내용을 PDF로 만들지 못했어요.')
         painter.translate(0,self._offset);self.doc.drawContents(painter,QRectF(0,0,self._width,self._height-self._offset));painter.end();buffer.close()
@@ -397,5 +416,4 @@ class TextEditor(QObject):
     def dispose(self):
         self.generation+=1;self.timer.stop();self.watchdog.stop();self.resume.stop();self._pending_font=None
         self._detach()
-        for id in self.ids.values():
-            if id>=0:QFontDatabase.removeApplicationFont(id)
+        # Registrations are shared and kept for the app's lifetime (register_font).

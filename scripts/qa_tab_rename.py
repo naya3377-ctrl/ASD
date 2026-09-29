@@ -91,6 +91,18 @@ def main():
         title_click(0);wait(lambda:field.isVisible());field.setProperty('text','둘째 문서');QTest.keyClick(w,Qt.Key_Return)
         wait(lambda:bool(errors) and not b.busy)
         assert b.document['name']=='편집 중.pdf' and (folder/'편집 중.pdf').exists()
+        # Windows shortcuts: Ctrl+PgDown / Ctrl+PgUp switch tabs, F2 renames, Ctrl+F4 closes
+        error_box=w.findChild(QObject,'errorDialog')   # the refused name above
+        if error_box and error_box.property('visible'): C.QMetaObject.invokeMethod(error_box,'close')
+        wait(lambda:w.property('dialogsClear'))
+        find('pageList').forceActiveFocus()
+        start=docs.activeBridge
+        QTest.keyClick(w,Qt.Key_PageDown,Qt.ControlModifier);wait(lambda:docs.activeBridge is not start)
+        QTest.keyClick(w,Qt.Key_PageUp,Qt.ControlModifier);wait(lambda:docs.activeBridge is start)
+        QTest.qWait(slow);QTest.keyClick(w,Qt.Key_F2);wait(lambda:find('tabRenameField0').isVisible())
+        QTest.keyClick(w,Qt.Key_Escape);wait(lambda:not find('tabRenameField0').isVisible())
+        docs.newTab();wait(lambda:len(docs._tabs)==3)
+        find('pageList').forceActiveFocus();QTest.keyClick(w,Qt.Key_F4,Qt.ControlModifier);wait(lambda:len(docs._tabs)==2)
         # Tab list menu: close all tabs, the window stays with an empty tab
         second_tab=[x for x in docs._tabs if x is not b][0]
         from unittest.mock import patch
@@ -100,7 +112,7 @@ def main():
         wait(lambda:len(docs._tabs)==1 and not docs.activeBridge.document['count'])
         assert w.isVisible()
         assert not [m for m in warnings if 'Binding loop' in m or 'TypeError' in m],warnings
-        print('PASS: click current tab to rename; Enter applies on disk, Esc cancels, other tabs just switch; unsaved edits kept; taken names refused; close all tabs keeps the window')
+        print('PASS: click current tab to rename; Enter applies on disk, Esc cancels, other tabs just switch; unsaved edits kept; taken names refused; close all tabs keeps the window; Ctrl+PgDn/PgUp, F2, Ctrl+F4')
     finally:
         for bridge in list(getattr(docs,'_tabs',[])): bridge._state['dirty']=False
         w.setVisible(False);docs.shutdown();del engine

@@ -18,7 +18,7 @@ Item {
     y: (angle===180 || angle===270 ? rect[3] : rect[1])*factor
     width: live.width; height: live.height
     scale: factor; rotation: angle; transformOrigin: Item.TopLeft
-    function attach() { if(editing && live.ready) {live.attach(input.textDocument,pageNumber);input.forceActiveFocus();} }
+    function attach() { if(editing && live.ready) {live.attach(input.textDocument,pageNumber);input.bound=true;input.forceActiveFocus();} }
     onEditingChanged: if(editing) Qt.callLater(attach)
     Component.onCompleted: Qt.callLater(attach)
     Connections {
@@ -33,8 +33,16 @@ Item {
     }
     TextArea {
         id: input; objectName: editor.editing ? "replacementText" : "inactiveInlineText"+pageNumber
+        Keys.onShortcutOverride: function(event) {
+            if(event.key===Qt.Key_S && (event.modifiers & Qt.ControlModifier)) event.accepted=true;
+        }
+        Keys.onPressed: function(event) {
+            if(event.key===Qt.Key_S && (event.modifiers & Qt.ControlModifier)) {
+                event.accepted=true; editor.session.save(!!(event.modifiers & Qt.ShiftModifier));
+            }
+        }
         property bool bound: false
-        visible: editor.live.ready; enabled: !controller.busy && editor.live.ready
+        visible: editor.live.ready; enabled: !controller.busy && editor.live.ready && !editor.live.loading
         width: editor.live.width
         // Only as tall as the text: clicks below it belong to the page and commit the edit.
         height: Math.max(1,editor.live.height-Math.max(0,editor.live.offset))

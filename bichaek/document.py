@@ -430,7 +430,24 @@ class Document(AnnotationOperations, ImageObjectOperations):
                 if writer is None:writer=writers[colour]=fitz.TextWriter(p.rect)
                 writer.append(fitz.Point(target.x0+x,target.y0+y),char,font=font,fontsize=size)
             for colour,writer in writers.items():writer.write_text(p,color=colour)
+            self._verify_written(p,target,[char for run,x,y,char in placed if loaded[run['font']].has_glyph(ord(char))])
         return self.info()
+
+    @staticmethod
+    def _verify_written(page,rect,chars):
+        """Read the new text back before keeping it. The written characters must
+        come out, in order, from the edited area (whitespace and Unicode
+        compatibility forms aside); otherwise the transaction rolls back and the
+        editor keeps the draft. Guards against a font whose character mapping
+        would store different letters than were typed."""
+        import unicodedata
+        norm=lambda text:''.join(c for c in unicodedata.normalize('NFKC',text) if not c.isspace())
+        want=norm(''.join(chars))
+        if not want:return
+        got=norm(page.get_text('text',clip=fitz.Rect(rect)+(-2,-2,2,2)))
+        it=iter(got)
+        if not all(c in it for c in want):
+            raise DocumentError('고친 글자를 PDF에 쓰고 다시 읽어 보니 달라서, 원문을 그대로 두었어요. 다른 글꼴을 골라 다시 적용해 주세요.')
 
     def font_preview(self, page, name, text, source, path):
         if source=='original':

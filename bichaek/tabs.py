@@ -5,6 +5,7 @@ from pathlib import Path
 import multiprocessing as mp
 import os
 import queue
+import time
 
 from PySide6.QtCore import QObject, Property, Signal, Slot, QTimer, QUrl, QAbstractListModel, QModelIndex, Qt
 from PySide6.QtWidgets import QFileDialog, QMessageBox
@@ -46,7 +47,10 @@ class EngineHub(QObject):
         self.inbox.put(msg)
 
     def poll(self):
+        # A time budget keeps each tick short; the rest waits for the next one.
+        deadline = time.monotonic() + .008
         for _ in range(60):
+            if time.monotonic() > deadline: break
             try: msg = self.outbox.get_nowait()
             except (queue.Empty, EOFError, OSError): break
             owner, success, error = self.callbacks.pop(msg["id"], (None, None, None))

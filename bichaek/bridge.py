@@ -130,7 +130,6 @@ class Bridge(QObject):
         self._editing_target = {}
         self._editor_font_family = ""
         self._font_preview_token = 0
-        self._qt_font_ids = {}
         self._live_editor = TextEditor(self)
         self._selected_text = ""
         self._text_page = -1
@@ -330,7 +329,10 @@ class Bridge(QObject):
         self.inbox.put(msg)
 
     def poll(self):
+        # A time budget keeps each tick short; the rest waits for the next one.
+        deadline = time.monotonic() + .008
         for _ in range(30):
+            if time.monotonic() > deadline: break
             try:
                 msg = self.outbox.get_nowait()
             except queue.Empty:
@@ -1063,14 +1065,12 @@ class Bridge(QObject):
         target=self._editing_target
         def got(result):
             if self.closed or token!=self._font_preview_token or result.get('stale'):return
-            import hashlib
             data=result.get('font',b'')
             if not data:return
-            key=hashlib.sha256(data).hexdigest()
-            if key not in self._qt_font_ids:
-                self._qt_font_ids[key]=QFontDatabase.addApplicationFontFromData(QByteArray(data))
-            families=QFontDatabase.applicationFontFamilies(self._qt_font_ids[key])
-            if families:self._editor_font_family=families[0];self.fontsChanged.emit()
+            try:
+                from .text_editor import register_font
+                self._editor_font_family=register_font(data)[0];self.fontsChanged.emit()
+            except ValueError as exc:self.set_status(str(exc))
         self.command('font_preview',{'page':target['page'],'name':target.get('font',''),
             'text':target.get('text',''),'source':self._font_choice,'path':self._font_path},got,
             guarded=True,error_callback=lambda message:None)
@@ -1148,7 +1148,8 @@ class Bridge(QObject):
         self._editing_target=value
         self._live_editor.start(value)
         self.prepare_fonts(True)
-        self.showTextEditor.emit(value)
+        # Per-character layout stays in Python (the live editor); QML only needs the box.
+        self.showTextEditor.emit({k:v for k,v in value.items() if k not in ('runs','textLines','neighbors')})
 
     @Slot('QVariantMap', str, float, float)
     def applyText(self, target, text, size, height):
@@ -1768,9 +1769,6 @@ class Bridge(QObject):
         if not self.hub: self.stopping.set()
         self.closed = True
         self._live_editor.dispose()
-        for font_id in self._qt_font_ids.values():
-            if font_id >= 0: QFontDatabase.removeApplicationFont(font_id)
-        self._qt_font_ids.clear()
         self._search_token += 1
         self._annotation_token += 1
         self._render_queue.clear()
