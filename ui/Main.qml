@@ -1490,7 +1490,7 @@ ApplicationWindow {
                 ComboBox { Layout.fillWidth: true; model: ["그래픽 가속 · 자동","호환 모드 · 화면 표시 문제가 있을 때"]; currentIndex: pdf.graphicsMode === "software" ? 1 : 0; onActivated: pdf.setGraphicsMode(currentIndex ? "software" : "auto") }
                 Text { text: "그래픽 설정은 앱을 다시 실행하면 적용됩니다."; color: Theme.inkMuted; font.pixelSize: 12 }
                 CheckBox { text: "현재 보는 스캔 페이지 자동 OCR"; checked: pdf.automaticOcr; onToggled: pdf.setAutomaticOcr(checked) }
-                Text { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "일반 PDF의 글자는 바로 선택할 수 있습니다. 스캔은 인식이 끝나면 선택할 수 있으며, 저장하면 문자층이 PDF에 남습니다."; color: Theme.inkMuted; font.pixelSize: 13 }
+                Text { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "기본은 꺼져 있어요. 스캔 페이지는 위쪽 안내 줄의 \"이 페이지 OCR\" 버튼이나 더보기 › 문자 인식(OCR)으로 필요할 때 인식합니다. 켜 두면 보는 스캔 페이지를 자동으로 인식해요. 저장하면 문자층이 PDF에 남습니다."; color: Theme.inkMuted; font.pixelSize: 13 }
                 ActionButton { text: "오류 로그 폴더 열기"; onClicked: pdf.openLogFolder() }
             }
         }

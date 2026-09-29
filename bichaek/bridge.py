@@ -142,7 +142,7 @@ class Bridge(QObject):
         self._outline_token = 0
         self.preferences = QSettings("Bichaek", "BichaekPDF")
         self.images.budget = int(self.preferences.value("cacheMiB",512))*1024*1024
-        self._auto_ocr = self.preferences.value("automaticOcr", True, type=bool)
+        self._auto_ocr = self.preferences.value("automaticOcr", False, type=bool)
         self._wheel_speed = float(self.preferences.value("wheelSpeed", 1.0))
         self.auto_timer = QTimer(self)
         self.auto_timer.setSingleShot(True)
@@ -655,7 +655,7 @@ class Bridge(QObject):
         self.active = active
         if active:
             # Settings are application-wide, while document state is independent.
-            self._auto_ocr = self.preferences.value("automaticOcr", True, type=bool)
+            self._auto_ocr = self.preferences.value("automaticOcr", False, type=bool)
             self._wheel_speed = float(self.preferences.value("wheelSpeed", 1.0))
             self.preferencesChanged.emit()
             self.requestText(self._page)
@@ -1884,9 +1884,7 @@ class Bridge(QObject):
         if self._busy:
             self.showError.emit("진행 중인 작업이 끝난 뒤 닫아 주세요.")
             return False
-        if self._ocr_busy:
-            self.showError.emit("OCR를 취소한 뒤 닫아 주세요.")
-            return False
+        if self._ocr_busy: self.cancelOcr()   # OCR has not changed the document
         return self.confirm_discard()
 
     def shutdown(self):
@@ -1908,8 +1906,9 @@ class Bridge(QObject):
         self.timer.stop()
         if self.ocr_cancel: self.ocr_cancel.set()
         if self.ocr_process:
-            self.ocr_process.join(timeout=6)
-            if self.ocr_process.is_alive(): self.ocr_process.terminate()
+            # Cancelled above; do not keep the user waiting on a running recognizer.
+            self.ocr_process.join(timeout=1.5)
+            if self.ocr_process.is_alive(): self.ocr_process.terminate(); self.ocr_process.join(timeout=2)
         if self.hub:
             self.hub.command(self, "close_document", priority=-5)
         else:

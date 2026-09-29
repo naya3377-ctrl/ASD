@@ -153,6 +153,7 @@ class Documents(QObject):
         self._close_approved = False
         self._close_all = []
         self._close_queue = []
+        self._close_waited = 0
         self.newTab()
 
     @Property(QObject, notify=activeChanged)
@@ -294,7 +295,9 @@ class Documents(QObject):
             self.tabsChanged.emit()
 
     def ask_close(self, b):
-        if b.busy or b.ocrBusy:
+        # OCR never holds a document open: cancelled, nothing is written.
+        if b.ocrBusy: b.cancelOcr()
+        if b.busy:
             self.showError.emit(b.document.get("name", "PDF") + "의 작업을 완료하거나 취소한 뒤 닫아 주세요.")
             return QMessageBox.Cancel
         if not b.document.get("dirty"): return QMessageBox.Discard
@@ -377,9 +380,30 @@ class Documents(QObject):
     def mayClose(self):
         if self._close_approved: return True
         if self._closing: return False
-        if any(b.busy or b.ocrBusy for b in self._tabs):
-            self.showError.emit("진행 중인 작업을 완료하거나 취소한 뒤 닫아 주세요.")
+        # Closing is never refused for background work. OCR is cancelled (it has
+        # not changed the document); a short engine task (opening, saving,
+        # applying an edit) is allowed to finish first, then closing continues.
+        for b in self._tabs:
+            if b.ocrBusy: b.cancelOcr()
+        if any(b.busy for b in self._tabs):
+            self._closing = True
+            self.closingChanged.emit()
+            self.activeBridge.set_status("진행 중인 작업을 마무리하고 닫을게요…")
+            self._close_waited = 0
+            QTimer.singleShot(100, self._close_when_idle)
             return False
+        return self._close_documents()
+
+    def _close_when_idle(self):
+        self._close_waited += 1
+        if any(b.busy for b in self._tabs) and self._close_waited < 150:   # up to 15 s
+            QTimer.singleShot(100, self._close_when_idle); return
+        self._closing = False
+        if self._close_documents():
+            self._close_approved = True
+            self.closeApproved.emit()
+
+    def _close_documents(self):
         if not any(b.document.get("dirty") for b in self._tabs): return True
         self._closing = True
         self.closingChanged.emit()

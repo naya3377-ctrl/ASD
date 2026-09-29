@@ -41,6 +41,10 @@ def run_primary(relay):
     from .icons import Icons
 
     preferences=QSettings("Bichaek","BichaekPDF")
+    # 1.0.3: OCR runs when asked. Earlier builds could have saved automatic
+    # OCR as on; reset it once so every install starts with it off.
+    if not preferences.value("ocrManualByDefault", False, type=bool):
+        preferences.remove("automaticOcr"); preferences.setValue("ocrManualByDefault", True)
     if preferences.value("graphicsMode","auto")=="software":
         os.environ["QT_QUICK_BACKEND"]="software"
     elif os.name=="nt":
