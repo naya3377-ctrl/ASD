@@ -114,24 +114,23 @@ FocusScope {
     }
     Rectangle {
         anchors.top: parent.top; anchors.horizontalCenter: parent.horizontalCenter; anchors.topMargin: 12
-        width: Math.min(parent.width-36,title.implicitWidth+30); height: 30
-        color: Theme.black; visible: view.controlsVisible
-        Text { id: title; anchors.fill: parent; anchors.leftMargin: 15; anchors.rightMargin: 15; verticalAlignment: Text.AlignVCenter; text: "윤DF · "+view.controller.document.name; elide: Text.ElideMiddle; font.pixelSize: 12; font.weight: Font.Bold; color: Theme.white }
+        width: Math.min(parent.width-36,title.implicitWidth+30); height: 30; radius: 7
+        color: "#d9101713"; visible: view.controlsVisible
+        Text { id: title; anchors.fill: parent; anchors.leftMargin: 15; anchors.rightMargin: 15; verticalAlignment: Text.AlignVCenter; text: "윤DF · "+view.controller.document.name; elide: Text.ElideMiddle; font.pixelSize: 12; color: "#dce5de" }
     }
     Rectangle {
         id: controls; objectName: "presentationControls"
         anchors.bottom: parent.bottom; anchors.horizontalCenter: parent.horizontalCenter; anchors.bottomMargin: 14
-        width: toolbar.implicitWidth+24; height: 54
-        visible: view.controlsVisible; color: Theme.white; border.color: Theme.black; border.width: Theme.border
-        Rectangle { x: Theme.shadowSmall; y: Theme.shadowSmall; z: -1; width: parent.width; height: parent.height; color: Theme.black }
+        width: toolbar.implicitWidth+24; height: 54; radius: 12
+        visible: view.controlsVisible; color: "#f5faf6"; border.color: "#cfded3"
         HoverHandler { id: controlsHover }
         RowLayout {
             id: toolbar; anchors.centerIn: parent; spacing: 8
-            ActionButton { objectName: "slidePreviousButton"; glyph: "left"; onLight: true; enabled: view.page>0; hint: "이전 페이지 · ← / ↑ / Page Up"; onClicked: { view.move(-1); view.showControls(); } }
-            Text { objectName: "slidePageNumber"; text: (view.page+1)+" / "+view.controller.document.count; horizontalAlignment: Text.AlignHCenter; Layout.minimumWidth: 76; color: Theme.black; font.pixelSize: 13; font.weight: Font.Black }
-            ActionButton { objectName: "slideNextButton"; glyph: "right"; onLight: true; enabled: view.page<view.controller.document.count-1; hint: "다음 페이지 · → / ↓ / Page Down / Space"; onClicked: { view.move(1); view.showControls(); } }
-            Rectangle { width: Theme.border; height: 22; color: Theme.black }
-            ActionButton { objectName: "exitPresentationButton"; text: "종료 · Esc"; primary: true; onClicked: view.exitRequested() }
+            ActionButton { objectName: "slidePreviousButton"; glyph: "left"; enabled: view.page>0; hint: "이전 페이지 · ← / ↑ / Page Up"; onClicked: { view.move(-1); view.showControls(); } }
+            Text { objectName: "slidePageNumber"; text: (view.page+1)+" / "+view.controller.document.count; horizontalAlignment: Text.AlignHCenter; Layout.minimumWidth: 76; color: "#314f3c"; font.pixelSize: 13; font.weight: Font.DemiBold }
+            ActionButton { objectName: "slideNextButton"; glyph: "right"; enabled: view.page<view.controller.document.count-1; hint: "다음 페이지 · → / ↓ / Page Down / Space"; onClicked: { view.move(1); view.showControls(); } }
+            Rectangle { width: 1; height: 22; color: "#d8e3da" }
+            ActionButton { objectName: "exitPresentationButton"; text: "종료 · Esc"; onClicked: view.exitRequested() }
         }
     }
 }

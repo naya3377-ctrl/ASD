@@ -529,6 +529,19 @@ class Bridge(QObject):
             self.preferences.setValue("themeMode", value)
             self.preferencesChanged.emit()
 
+    ACCENTS = ("blue", "green", "purple", "orange", "red", "graphite")
+
+    @Property(str, notify=preferencesChanged)
+    def accentColor(self):
+        value = str(self.preferences.value("accentColor", "blue"))
+        return value if value in self.ACCENTS else "blue"
+
+    @Slot(str)
+    def setAccentColor(self, value):
+        if value in self.ACCENTS:
+            self.preferences.setValue("accentColor", value)
+            self.preferencesChanged.emit()
+
     @Property(str,notify=preferencesChanged)
     def graphicsMode(self):return self.preferences.value("graphicsMode","auto")
     @Slot(str)

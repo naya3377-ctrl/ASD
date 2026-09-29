@@ -183,7 +183,7 @@ Item {
         x: pointer.notePoint.x*layer.factor; y: pointer.notePoint.y*layer.factor
         width: pointer.pressedAnnotation ? (pointer.pressedAnnotation.rect[2]-pointer.pressedAnnotation.rect[0])*layer.factor : 0
         height: pointer.pressedAnnotation ? (pointer.pressedAnnotation.rect[3]-pointer.pressedAnnotation.rect[1])*layer.factor : 0
-        color: "#88f0c020"; border.color: Theme.blue; border.width: 2; z: 10
+        color: "#88ffd54f"; border.color: Theme.accent; border.width: 2; z: 10
     }
     Timer {
         interval: 25; repeat: true; running: pointer.pressed && pointer.moved && !pointer.draggingNote

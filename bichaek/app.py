@@ -77,6 +77,9 @@ def run_primary(relay):
     if not engine.rootObjects():
         documents.shutdown()
         return 1
+    from .window_placement import place_window
+    # Before the first frame: centred on the monitor in use, fitted to it.
+    place_window(engine.rootObjects()[0])
     external.attach(engine.rootObjects()[0])
     launch_timer = QTimer()
     launch_timer.setInterval(100)

@@ -89,8 +89,25 @@ def main():
         # F11 toggles, and the chosen width is remembered
         QTest.keyClick(w,Qt.Key_F11);wait(lambda:w.property('focusReading') and abs(w.property('zoom')-.5)<.01)
         QTest.keyClick(w,Qt.Key_F11);wait(lambda:not w.property('focusReading'))
+        # Search: closing hides the marks, reopening brings the same results back
+        def marks():
+            found=[];pending=[w.contentItem()]
+            while pending:
+                it=pending.pop()
+                if it.objectName()=='searchMark' and it.isVisible():found.append(it)
+                pending.extend(it.childItems())
+            return len(found)
+        C.QMetaObject.invokeMethod(w,'goPage',C.Q_ARG('QVariant',0));wait(lambda:b.currentPage==0)
+        w.setProperty('searchOpen',True);b.search('paragraph');wait(lambda:not b.searching and b.searchCount>0 and marks()>0)
+        count=b.searchCount;shown=marks()
+        w.setProperty('searchOpen',False);wait(lambda:marks()==0)
+        w.setProperty('searchOpen',True);wait(lambda:marks()==shown)
+        assert b.searchCount==count
+        # Accent colour follows the setting
+        b.setAccentColor('green');QTest.qWait(100)
+        b.setAccentColor('blue')
         assert not warnings,warnings
-        print('PASS: read/comments/edit modes switch panels; focus reading hides chrome, keeps page, width and backdrop adjust, Esc/F11 restore')
+        print('PASS: search marks hide with the panel and return on reopen; read/comments/edit modes switch panels; focus reading hides chrome, keeps page, width and backdrop adjust, Esc/F11 restore')
     finally:
         b._state['dirty']=False;w.setVisible(False);docs.shutdown();del engine
 

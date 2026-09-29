@@ -43,9 +43,6 @@ This source preview is not automatically published to a public repository.
   The full data license is installed in tessdata/LICENSE.
 - fontTools 4.61.1 source and MIT license: https://github.com/fonttools/fonttools/tree/4.61.1
   Its full license is preserved in runtime/packages/fonttools-4.61.1.dist-info/licenses/LICENSE.
-- Outfit typeface (Regular, Medium, Bold, Black), SIL Open Font License 1.1,
-  Copyright 2021 The Outfit Project Authors: https://github.com/Outfitio/Outfit-Fonts
-  Unmodified static instances from Google Fonts; the license is installed in assets/fonts/OFL.txt.
 - NSIS installer engine: zlib/libpng license. https://nsis.sourceforge.io/License
 - Microsoft Visual C++ runtime DLLs accompany the official Qt/Python wheels;
   Microsoft runtime redistribution terms apply.

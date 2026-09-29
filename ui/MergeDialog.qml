@@ -9,13 +9,12 @@ Dialog {
     anchors.centerIn: parent; modal: true; padding: 24
     onClosed: controller.closeMerge()
     closePolicy: controller.mergeBusy ? Popup.NoAutoClose : Popup.CloseOnEscape
-    background: Block { fill: Theme.surface; outlineWidth: Theme.borderHeavy; shadow: Theme.shadowLarge+2 }
-    Overlay.modal: Rectangle { color: "#8c121212" }
+    background: Rectangle { color: Theme.surface; radius: 14; border.color: Theme.line }
     header: Item {
         height: 90
         Column {
             x: 26; y: 24; spacing: 6
-            Row { spacing: 10; BauhausMark { size: 24; anchors.verticalCenter: parent.verticalCenter } Text { text: "PDF 결합"; font.pixelSize: 24; font.weight: Font.Black; font.letterSpacing: -.5; color: Theme.ink } }
+            Text { text: "PDF 결합"; font.pixelSize: 22; font.weight: Font.DemiBold; color: Theme.ink }
             Text { text: "여러 문서를 원하는 순서로 하나의 PDF에 담으세요."; font.pixelSize: 13; color: Theme.inkMuted }
         }
         ActionButton { anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 17; glyph: "close"; hint: "닫기"; enabled: !controller.mergeBusy; onClicked: dialog.close() }
@@ -30,15 +29,15 @@ Dialog {
             Text { text: controller.mergeItems.length+"개 파일  ·  "+controller.mergePageCount+"페이지"; font.pixelSize: 12; color: Theme.inkMuted }
         }
         Rectangle {
-            Layout.fillWidth: true; Layout.fillHeight: true; color: Theme.surfaceAlt; border.color: Theme.lineStrong; border.width: Theme.border
+            Layout.fillWidth: true; Layout.fillHeight: true; color: Theme.surfaceAlt; radius: 10; border.color: Theme.line
             ListView {
                 id: list; objectName: "mergeList"; anchors.fill: parent; anchors.margins: 10
                 clip: true; spacing: 8; model: controller.mergeItems
-                ScrollBar.vertical: BauhausScrollBar { }
+                ScrollBar.vertical: ScrollBar { }
                 delegate: Rectangle {
                     required property var modelData
                     required property int index
-                    width: list.width-8; height: 84; color: Theme.raised; border.color: Theme.lineStrong; border.width: Theme.border
+                    width: list.width-8; height: 84; radius: 8; color: Theme.raised; border.color: Theme.line
                     RowLayout {
                         anchors.fill: parent; anchors.margins: 12; spacing: 14
                         Text { text: (index+1).toString().padStart(2,"0"); font.pixelSize: 12; color: Theme.inkMuted; Layout.preferredWidth: 23 }

@@ -11,13 +11,13 @@ Button {
     text: controller.fontOptions[currentIndex] ? controller.fontOptions[currentIndex].label : "글꼴 검색"
     implicitWidth: 260; implicitHeight: 36
     contentItem: Text { text: picker.text+"  ▾"; color: Theme.ink; verticalAlignment: Text.AlignVCenter; elide: Text.ElideRight; leftPadding: 10; rightPadding: 10; font.pixelSize: 13 }
-    background: Rectangle { color: Theme.field; border.color: popup.visible ? Theme.focusRing : Theme.lineStrong; border.width: Theme.border }
+    background: Rectangle { color: Theme.field; border.color: popup.visible ? Theme.focusRing : Theme.lineStrong; radius: Theme.radiusSmall }
     onClicked: {popup.open();fontSearch.forceActiveFocus();}
     Popup {
         id: popup; objectName: "fontSearchPopup"; y: picker.height+5
         width: Math.max(320,picker.width); height: Math.min(440, picker.Window.window.height-210)
         padding: 10; closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
-        background: Rectangle { color: Theme.raised; border.color: Theme.lineStrong; border.width: Theme.border }
+        background: Rectangle { color: Theme.raised; border.color: Theme.lineStrong; radius: Theme.radius }
         ColumnLayout {
             anchors.fill: parent; spacing: 8
             TextField { id: fontSearch; objectName: "fontSearchInput"; Layout.fillWidth: true; placeholderText: "글꼴 이름 검색 · 한글 / 영문"; selectByMouse: true; onAccepted: {if(fontList.count){picker.controller.setFontChoice(fontList.model[fontList.currentIndex<0 ? 0 : fontList.currentIndex].key);popup.close();}} }
@@ -28,7 +28,7 @@ Button {
                     if(!query)return rows;
                     return rows.filter(function(row){return (row.label+" "+(row.aliases || []).join(" ")).toLocaleLowerCase().replace(/\s+/g,"").indexOf(query)>=0;});
                 }
-                ScrollBar.vertical: BauhausScrollBar {}
+                ScrollBar.vertical: ScrollBar {}
                 delegate: ItemDelegate {
                     required property var modelData; required property int index
                     objectName: "fontResult"+index; width: fontList.width; text: modelData.label
