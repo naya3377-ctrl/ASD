@@ -41,7 +41,7 @@ ApplicationWindow {
     property bool closeAllRequested: false
     function quitApplication() { closeAllRequested=true; close(); }
     property bool restoring: false
-    property bool dialogsClear: !textDialog.visible && !annotationEditor.visible && !mergeDialog.visible && !ocrDialog.visible && !settingsDialog.visible && !errorDialog.visible && !aboutDialog.visible && !closeChoice.visible && !shortcutsDialog.visible && !(tabWorkspace && tabWorkspace.closing)
+    property bool dialogsClear: !textDialog.visible && !annotationEditor.visible && !mergeDialog.visible && !ocrDialog.visible && !settingsDialog.visible && !errorDialog.visible && !aboutDialog.visible && !closeChoice.visible && !shortcutsDialog.visible && !printPreview.visible && !(tabWorkspace && tabWorkspace.closing)
     property bool tabActionsEnabled: dialogsClear && !presenting
     property bool externalOpenReady: dialogsClear && !readerMenuOpen && !tabMenu.visible && !switching
     property bool externalOpenPending: typeof externalRequests !== "undefined" && externalRequests.pending
@@ -374,7 +374,7 @@ ApplicationWindow {
     Shortcut { sequences: ["Home","Ctrl+Home"]; enabled: root.pageKeysEnabled; onActivated: root.goPage(0) }
     Shortcut { sequences: ["End","Ctrl+End"]; enabled: root.pageKeysEnabled; onActivated: root.goPage(pdf.document.count-1) }
     Shortcut { sequence: StandardKey.Open; enabled: root.tabActionsEnabled; onActivated: pdf.chooseOpen() }
-    Shortcut { sequence: StandardKey.Print; enabled: root.tabActionsEnabled && root.hasDocument && !pdf.busy && !pdf.ocrBusy; onActivated: pdf.printDocument() }
+    Shortcut { sequence: StandardKey.Print; enabled: root.tabActionsEnabled && root.hasDocument && !pdf.busy && !pdf.ocrBusy; onActivated: printPreview.open() }
     Shortcut { sequence: StandardKey.SelectAll; enabled: root.tabActionsEnabled && root.tool === "read" && !root.typingText; onActivated: pdf.selectAllText() }
     Shortcut { sequence: StandardKey.Save; enabled: root.canSave; onActivated: root.saveDocument(false) }
     Shortcut { sequence: StandardKey.SaveAs; enabled: root.canSave; onActivated: root.saveDocument(true) }
@@ -576,7 +576,7 @@ ApplicationWindow {
                 ActionButton { objectName: "focusReadingButton"; glyph: "focus"; hint: "집중 읽기 · F11"; enabled: root.hasDocument && root.dialogsClear && !pdf.busy; onClicked: root.startFocusReading() }
                 ActionButton { glyph: "search"; hint: "문서 검색 · Ctrl+F"; active: root.searchOpen; enabled: root.hasDocument; onClicked: { root.searchOpen=!root.searchOpen; root.sidebarOpen=true; if(root.searchOpen) searchInput.forceActiveFocus(); } }
                 ActionButton { objectName: "presentationButton"; glyph: "present"; hint: "슬라이드 쇼 · F5"; enabled: root.hasDocument && !pdf.busy && !pdf.ocrBusy; onClicked: root.startPresentation() }
-                ActionButton { objectName: "printButton"; glyph: "print"; hint: "인쇄 · Ctrl+P"; enabled: root.tabActionsEnabled && root.hasDocument && pdf.document.printable && !pdf.busy && !pdf.ocrBusy; onClicked: pdf.printDocument() }
+                ActionButton { objectName: "printButton"; glyph: "print"; hint: "인쇄 · 미리보기 · Ctrl+P"; enabled: root.tabActionsEnabled && root.hasDocument && pdf.document.printable && !pdf.busy && !pdf.ocrBusy; onClicked: printPreview.open() }
                 ToolSeparator {}
                 ActionButton { glyph: "open"; hint: "열기 · Ctrl+O"; enabled: root.tabActionsEnabled && !pdf.busy && !pdf.ocrBusy; onClicked: pdf.chooseOpen() }
                 ActionButton { objectName: "saveButton"; text: "저장"; primary: root.hasDocument && pdf.document.dirty; outlined: !(root.hasDocument && pdf.document.dirty); implicitWidth: 64; hint: "저장 · Ctrl+S"; enabled: root.canSave; onClicked: root.saveDocument(false) }
@@ -1058,6 +1058,7 @@ ApplicationWindow {
     }
 
     AnnotationEditor { id: annotationEditor; controller: root.pdf }
+    PrintPreview { id: printPreview; controller: root.pdf }
 
     component CommentMark: Item {
         property var annotation: null
@@ -1350,7 +1351,7 @@ ApplicationWindow {
         width: Math.min(720, root.width-60); height: Math.min(620, root.height-60)
         title: "단축키"; standardButtons: Dialog.Close; Component.onCompleted: standardButton(Dialog.Close).text = "닫기"
         readonly property var groups: [
-            { title: "문서", keys: [["Ctrl+O","열기"],["Ctrl+S","저장 (편집 중이면 적용 후 저장)"],["Ctrl+Shift+S","다른 이름으로 저장"],["Ctrl+P","인쇄"],["Ctrl+F","문서 검색"],["F3 / Shift+F3","다음 / 이전 검색 결과"],["Ctrl+Z / Ctrl+Shift+Z","되돌리기 / 다시 실행"]] },
+            { title: "문서", keys: [["Ctrl+O","열기"],["Ctrl+S","저장 (편집 중이면 적용 후 저장)"],["Ctrl+Shift+S","다른 이름으로 저장"],["Ctrl+P","인쇄 (미리보기)"],["Ctrl+F","문서 검색"],["F3 / Shift+F3","다음 / 이전 검색 결과"],["Ctrl+Z / Ctrl+Shift+Z","되돌리기 / 다시 실행"]] },
             { title: "탭", keys: [["Ctrl+T / Ctrl+N","새 탭"],["Ctrl+W / Ctrl+F4","탭 닫기"],["Ctrl+Shift+W","모든 탭 닫기"],["Ctrl+Tab / Ctrl+PgDn","다음 탭"],["Ctrl+Shift+Tab / Ctrl+PgUp","이전 탭"],["F2","파일 이름 바꾸기"],["Ctrl+Shift+Q","프로그램 끝내기"]] },
             { title: "보기", keys: [["← → / PgUp PgDn / Space","이전 / 다음 페이지"],["Home / End","처음 / 마지막 페이지"],["Ctrl+G","페이지 번호로 이동"],["Ctrl + / Ctrl -","확대 / 축소"],["Ctrl+0","너비 맞춤"],["F11","집중 읽기"],["F5 / Ctrl+L","슬라이드 쇼"],["Esc","나가기 · 취소"]] },
             { title: "편집", keys: [["Alt+↑ / Alt+↓","선택한 페이지 위아래로"],["Delete","선택한 이미지 삭제"],["Ctrl+Enter","메모 적용"],["F1","이 창"]] }

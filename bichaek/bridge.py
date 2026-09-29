@@ -1554,14 +1554,139 @@ class Bridge(QObject):
         else:
             self.auto_timer.start()
 
-    def printWithPrinter(self, printer, pages):
+    # ---- Print preview -------------------------------------------------
+    PDF_PRINTER = "__pdf__"   # "save as PDF", always offered
+    PDF_SIZES = ("A4", "A3", "A5", "B5", "Letter", "Legal")
+
+    @Slot(result='QVariantList')
+    def printers(self):
+        from PySide6.QtPrintSupport import QPrinterInfo
+        default = QPrinterInfo.defaultPrinterName()
+        names = QPrinterInfo.availablePrinterNames()
+        found = [{"name": n, "label": n, "isDefault": n == default} for n in names]
+        found.sort(key=lambda p: not p["isDefault"])
+        return found + [{"name": self.PDF_PRINTER, "label": "PDF 파일로 저장", "isDefault": not names}]
+
+    @Slot(str, result='QVariantMap')
+    def printerSetup(self, name):
+        """Paper sizes and capabilities of one printer, for the preview panel."""
+        from PySide6.QtGui import QPageSize
+        from PySide6.QtPrintSupport import QPrinterInfo, QPrinter
+        def entry(size): return {"id": size.id().value, "name": size.name()}
+        if name == self.PDF_PRINTER:
+            sizes = [QPageSize(getattr(QPageSize.PageSizeId, n)) for n in self.PDF_SIZES]
+            return {"sizes": [entry(x) for x in sizes], "defaultSize": QPageSize.PageSizeId.A4.value, "duplex": False, "color": True}
+        info = QPrinterInfo.printerInfo(name)
+        sizes, seen = [], set()
+        for size in info.supportedPageSizes():
+            if size.id() == QPageSize.PageSizeId.Custom or size.id().value in seen: continue
+            seen.add(size.id().value); sizes.append(entry(size))
+        default = info.defaultPageSize()
+        if default.isValid() and default.id().value not in seen: sizes.insert(0, entry(default))
+        if not sizes: sizes = [entry(QPageSize(QPageSize.PageSizeId.A4))]
+        modes = info.supportedDuplexModes()
+        return {"sizes": sizes, "defaultSize": default.id().value if default.isValid() else sizes[0]["id"],
+                "duplex": len([m for m in modes if m != QPrinter.DuplexNone]) > 0,
+                "color": QPrinter.Color in info.supportedColorModes() if hasattr(info, "supportedColorModes") else True}
+
+    def _make_printer(self, options):
+        from PySide6.QtGui import QPageSize, QPageLayout
+        from PySide6.QtPrintSupport import QPrinter, QPrinterInfo
+        name = options.get("printer") or self.PDF_PRINTER
+        if name == self.PDF_PRINTER:
+            printer = QPrinter(QPrinter.HighResolution)
+            printer.setOutputFormat(QPrinter.PdfFormat)
+        else:
+            printer = QPrinter(QPrinterInfo.printerInfo(name), QPrinter.HighResolution)
+        printer.setDocName(self._state.get("name", "윤DF"))
+        size_id = options.get("pageSize")
+        if size_id is not None and int(size_id) >= 0:
+            printer.setPageSize(QPageSize(QPageSize.PageSizeId(int(size_id))))
+        printer.setPageOrientation(QPageLayout.Landscape if options.get("_orientation") == "landscape" else QPageLayout.Portrait)
+        return printer
+
+    def _print_pages(self, options):
+        from .printing import parse_range
+        count = self._state["count"]
+        mode = options.get("range", "all")
+        if mode == "current": return [self._page]
+        if mode == "selection": return sorted(p for p in (self._selection or [self._page]) if 0 <= p < count)
+        if mode == "custom": return parse_range(options.get("custom", ""), count)
+        return list(range(count))
+
+    def _resolved(self, options):
+        """Options with the page list and the paper orientation decided."""
+        from .printing import paper_orientation
+        options = dict(options)
+        pages = self._print_pages(options)
+        orientation = options.get("orientation", "auto")
+        if orientation == "auto":
+            orientation = paper_orientation([self._page_size(p) for p in pages[:200]])
+        options["_orientation"] = orientation
+        return options, pages
+
+    @Slot('QVariantMap', result='QVariantMap')
+    def printLayout(self, options):
+        """Sheets exactly as they will print: paper size, printable area and each
+        page's place and rotation, all in points."""
+        from .printing import place, needs_rotation
+        if not self._state.get("count"): return {"error": "문서가 없어요.", "sheets": []}
+        try:
+            options, pages = self._resolved(options)
+        except ValueError as exc:
+            return {"error": str(exc), "sheets": []}
+        key = (options.get("printer"), options.get("pageSize"), options["_orientation"])
+        cache = self.__dict__.setdefault("_print_layout_cache", {})
+        if key not in cache:
+            layout = self._make_printer(options).pageLayout()
+            full, paint = layout.fullRectPoints(), layout.paintRectPoints()
+            cache[key] = ((full.width(), full.height()), (paint.x(), paint.y(), paint.width(), paint.height()))
+        (pw, ph), area = cache[key]
+        auto = options.get("orientation", "auto") == "auto"
+        fit = options.get("fit", "shrink")
+        sheets = []
+        for page in pages:
+            w, h = self._page_size(page)
+            rotate = needs_rotation(w, h, area[2], area[3], auto)
+            x, y, sw, sh = place(w, h, (0, 0, area[2], area[3]), fit, rotate)
+            sheets.append({"page": page, "rotate": rotate, "rect": [area[0]+x, area[1]+y, sw, sh]})
+        return {"error": "", "paper": [pw, ph], "area": list(area), "orientation": options["_orientation"], "sheets": sheets}
+
+    @Slot('QVariantMap')
+    def startPrint(self, options):
+        from PySide6.QtPrintSupport import QPrinter
+        from .printing import expand_copies
+        if self._busy or self._ocr_busy or not self._state.get("count"): return
+        if not self._state.get("printable"):
+            self.showError.emit("이 PDF는 인쇄 권한이 제한되어 있어요."); return
+        try:
+            options, pages = self._resolved(options)
+        except ValueError as exc:
+            self.showError.emit(str(exc)); return
+        printer = self._make_printer(options)
+        if options.get("printer", self.PDF_PRINTER) == self.PDF_PRINTER:
+            target = options.get("outputFile") or QFileDialog.getSaveFileName(None, "PDF로 저장",
+                str(Path(self._state.get("path") or "문서.pdf").with_name(Path(self._state.get("name", "문서")).stem + "_인쇄.pdf")), "PDF 문서 (*.pdf)")[0]
+            if not target: return
+            printer.setOutputFileName(target)
+        printer.setResolution(300 if self._state.get("printHighQuality") else 150)
+        printer.setCopyCount(max(1, min(999, int(options.get("copies", 1)))))
+        printer.setCollateCopies(bool(options.get("collate", True)))
+        gray = bool(options.get("gray"))
+        printer.setColorMode(QPrinter.GrayScale if gray else QPrinter.Color)
+        printer.setDuplex({"long": QPrinter.DuplexLongSide, "short": QPrinter.DuplexShortSide}.get(options.get("duplex"), QPrinter.DuplexNone))
+        pages = expand_copies(printer, pages)
+        self.printWithPrinter(printer, pages, {"fit": options.get("fit", "shrink"),
+            "auto_rotate": options.get("orientation", "auto") == "auto", "gray": gray})
+
+    def printWithPrinter(self, printer, pages, layout=None):
         """Also used by integration QA with QPrinter's PDF output backend."""
         from .printing import PrintJob
         if self._busy or self._ocr_busy or not self._state.get("printable") or not pages: return
         self.auto_timer.stop()
         self._busy = True
         self.stateChanged.emit()
-        self._print_job = PrintJob(self, printer, pages)
+        self._print_job = PrintJob(self, printer, pages, layout)
         self._print_job.start()
 
     @Slot(result=str)

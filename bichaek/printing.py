@@ -1,10 +1,68 @@
-"""Cancellable, one-page-at-a-time raster printing of the live PDF.
+"""Cancellable, one-page-at-a-time raster printing of the live PDF, and the
+page placement shared by the print preview and the printer.
 SPDX-License-Identifier: AGPL-3.0-or-later
 """
+import re
 from PySide6.QtCore import Qt, QRectF, QTimer
-from PySide6.QtGui import QImage, QPainter
+from PySide6.QtGui import QImage, QPainter, QTransform
 from PySide6.QtPrintSupport import QPrinter
 from PySide6.QtWidgets import QProgressDialog
+
+
+def parse_range(text, count):
+    """'1-3, 5, 8-' → [0, 1, 2, 4, 7, 8, …] (0-based, in the order written).
+    Raises ValueError with a message for the user."""
+    pages = []
+    for part in re.split(r"[,\s]+", str(text).strip()):
+        if not part: continue
+        m = re.fullmatch(r"(\d*)\s*[-~]\s*(\d*)|(\d+)", part)
+        if not m or part in ("-", "~"):
+            raise ValueError(f"페이지 범위를 읽을 수 없어요: {part}  (예: 1-3, 5)")
+        if m.group(3):
+            first = last = int(m.group(3))
+        else:
+            first = int(m.group(1) or 1); last = int(m.group(2) or count)
+        if first < 1 or last < 1 or first > count or last > count:
+            raise ValueError(f"1~{count} 사이의 페이지를 적어 주세요: {part}")
+        step = 1 if last >= first else -1
+        pages.extend(range(first - 1, last - 1 + step, step))
+    if not pages:
+        raise ValueError("인쇄할 페이지를 적어 주세요. (예: 1-3, 5)")
+    return pages
+
+
+def expand_copies(printer, pages):
+    """Hardware-supported copies are left to the spooler; never duplicate twice."""
+    if not printer.supportsMultipleCopies() and printer.copyCount() > 1:
+        copies = printer.copyCount()
+        pages = pages * copies if printer.collateCopies() else [p for p in pages for _ in range(copies)]
+        printer.setCopyCount(1)
+    return pages
+
+
+def paper_orientation(sizes):
+    """'landscape' when most selected pages are wider than tall."""
+    wide = sum(1 for w, h in sizes if w > h)
+    return "landscape" if wide * 2 > len(sizes) else "portrait"
+
+
+def place(page_w, page_h, area, fit="fit", rotate=False):
+    """Where a page lands on the sheet, in points: (x, y, w, h) inside the
+    printable `area` (x, y, w, h). fit: 'fit' scales to the area, 'actual'
+    keeps 100 %, 'shrink' only reduces pages that are too large. A rotated
+    page is laid out turned by 90°."""
+    if rotate: page_w, page_h = page_h, page_w
+    ax, ay, aw, ah = area
+    scale = min(aw / page_w, ah / page_h)
+    if fit == "actual": scale = 1.0
+    elif fit == "shrink": scale = min(1.0, scale)
+    w, h = page_w * scale, page_h * scale
+    return (ax + (aw - w) / 2, ay + (ah - h) / 2, w, h)
+
+
+def needs_rotation(page_w, page_h, paper_w, paper_h, auto):
+    """Auto orientation turns a page whose shape disagrees with the paper."""
+    return bool(auto) and (page_w > page_h) != (paper_w > paper_h) and abs(page_w - page_h) > 1
 
 
 def selected_pages(printer, count, current, selection):
@@ -19,17 +77,15 @@ def selected_pages(printer, count, current, selection):
         pages = list(range(count))
     if printer.pageOrder() == QPrinter.LastPageFirst:
         pages.reverse()
-    # Hardware-supported copies are left to the spooler; never duplicate twice.
-    if not printer.supportsMultipleCopies() and printer.copyCount() > 1:
-        copies = printer.copyCount()
-        pages = pages * copies if printer.collateCopies() else [p for p in pages for _ in range(copies)]
-        printer.setCopyCount(1)
-    return pages
+    return expand_copies(printer, pages)
 
 
 class PrintJob:
-    def __init__(self, bridge, printer, pages):
+    """layout: {'fit': 'fit'|'actual'|'shrink', 'auto_rotate': bool, 'gray': bool}.
+    Without it pages are fitted to the printable area as before."""
+    def __init__(self, bridge, printer, pages, layout=None):
         self.bridge, self.printer, self.pages = bridge, printer, list(pages)
+        self.layout = dict(layout or {})
         self.index = 0
         self.finished = False
         self.painter = QPainter()
@@ -70,9 +126,16 @@ class PrintJob:
                 raise RuntimeError("프린터가 다음 페이지를 받지 못했어요.")
             # Non-full-page printer coordinates start at the printable origin.
             area = QRectF(self.painter.viewport())
-            ratio = min(area.width()/image.width(), area.height()/image.height())
-            w, h = image.width()*ratio, image.height()*ratio
-            target = QRectF(area.x()+(area.width()-w)/2, area.y()+(area.height()-h)/2, w, h)
+            page_w, page_h = result.get("pageWidth") or image.width(), result.get("pageHeight") or image.height()
+            paint = self.printer.pageLayout().paintRectPoints()
+            rotate = needs_rotation(page_w, page_h, paint.width(), paint.height(), self.layout.get("auto_rotate"))
+            if rotate: image = image.transformed(QTransform().rotate(90))
+            if self.layout.get("gray"): image = image.convertToFormat(QImage.Format_Grayscale8)
+            # The shared placement works in points; the device may use any resolution.
+            unit = area.width() / max(1.0, paint.width())
+            x, y, w, h = place(page_w, page_h, (0, 0, paint.width(), paint.height()), self.layout.get("fit", "fit"), rotate)
+            target = QRectF(area.x() + x*unit, area.y() + y*unit, w*unit, h*unit)
+            self.painter.setClipRect(area)
             self.painter.setRenderHint(QPainter.SmoothPixmapTransform)
             self.painter.drawImage(target, image)
             self.index += 1
