@@ -9,60 +9,63 @@ QtObject {
     property string mode: "system"
     readonly property bool dark: mode === "dark" || (mode === "system" && Qt.styleHints.colorScheme === Qt.ColorScheme.Dark)
 
-    // Surfaces, from the back of the window to the front. Light greys and
-    // white in the Windows 11 manner, one blue accent.
-    readonly property color canvas:     dark ? "#1b1c1f" : "#f6f5f8"
-    readonly property color chrome:     dark ? "#1b1c1f" : "#f6f5f8"
-    readonly property color surface:    dark ? "#242529" : "#ffffff"
-    readonly property color surfaceAlt: dark ? "#2d2f34" : "#f0f2f4"   // segmented groups
-    readonly property color raised:     dark ? "#34363c" : "#ffffff"
-    readonly property color field:      dark ? "#1f2023" : "#ffffff"
-    readonly property color line:       dark ? "#34363b" : "#e7e7ea"
-    readonly property color lineStrong: dark ? "#45484e" : "#d4d6dc"
+    // Surfaces, from the back of the window to the front, after Apple's
+    // system colours: one unified light grey for title, tabs and toolbar,
+    // white content, and Apple's label and separator greys.
+    readonly property color canvas:     dark ? "#161618" : "#ececef"   // behind the pages
+    readonly property color chrome:     dark ? "#2a2a2c" : "#f5f5f7"   // title bar, tabs, toolbar
+    readonly property color surface:    dark ? "#1e1e20" : "#ffffff"   // panels
+    readonly property color surfaceAlt: dark ? "#3a3a3c" : "#e8e8ed"   // segmented controls
+    readonly property color raised:     dark ? "#636366" : "#ffffff"   // selected segment, cards
+    readonly property color field:      dark ? "#1c1c1e" : "#ffffff"
+    readonly property color line:       dark ? "#38383a" : "#e5e5ea"
+    readonly property color lineStrong: dark ? "#48484a" : "#d1d1d6"
 
-    // Text.
-    readonly property color ink:      dark ? "#eceef2" : "#1f1f24"
-    readonly property color inkSoft:  dark ? "#c3c6cc" : "#45464d"
-    readonly property color inkMuted: dark ? "#8d9098" : "#7a7c85"
-    readonly property color inkFaint: dark ? "#62656c" : "#a9abb2"
+    // Text (label, secondary, tertiary, quaternary).
+    readonly property color ink:      dark ? "#f5f5f7" : "#1d1d1f"
+    readonly property color inkSoft:  dark ? "#d1d1d6" : "#3a3a3c"
+    readonly property color inkMuted: dark ? "#98989d" : "#6e6e73"
+    readonly property color inkFaint: dark ? "#636366" : "#aeaeb2"
 
-    // Accent colour, chosen in Settings. Each entry: [light, dark] for
-    // accent, hover, pressed, ink (text on light surfaces), soft (selected fill),
-    // selection (text highlight).
+    // Accent colour, chosen in Settings: Apple's system colours [light, dark].
     property string accentName: "blue"
     readonly property var accents: ({
-        blue:     { label: "파랑",   light: ["#1474c3","#1067b0","#0d5898","#1464ab","#e5f1fd","#cce4fb"], dark: ["#4ea1f0","#66b0f3","#3b8fdd","#9ccdf8","#1f3550","#2b4a6b"] },
-        green:    { label: "초록",   light: ["#1f7a4d","#1a6a43","#155a38","#1c6b44","#e3f3ea","#c8e8d6"], dark: ["#4cc38a","#63cf9a","#3aa876","#9be0bd","#1d3a2c","#2a5140"] },
-        purple:   { label: "보라",   light: ["#6b45c6","#5d3ab3","#50309c","#5b3cad","#efe9fb","#ddd0f6"], dark: ["#a58af0","#b49df3","#9277e0","#cdbef8","#2e2550","#41356b"] },
-        orange:   { label: "주황",   light: ["#c2560c","#ad4c0a","#964208","#a84a0a","#fdefe4","#f9d9c2"], dark: ["#f39a52","#f5aa6a","#e0873e","#f8c79c","#452a17","#5e3a20"] },
-        red:      { label: "빨강",   light: ["#c62f3c","#b12835","#99222e","#ad2a36","#fcebed","#f7d0d4"], dark: ["#f07a84","#f38e97","#e0646f","#f7b4ba","#46222a","#60303a"] },
-        graphite: { label: "흑연",   light: ["#3d4450","#333a45","#2a303a","#343a45","#eceef1","#d8dce2"], dark: ["#b6bcc7","#c4c9d2","#a2a9b5","#d7dbe1","#30343b","#434852"] }
+        blue:     { label: "파랑", light: "#007aff", dark: "#0a84ff" },
+        purple:   { label: "보라", light: "#af52de", dark: "#bf5af2" },
+        pink:     { label: "분홍", light: "#ff2d55", dark: "#ff375f" },
+        red:      { label: "빨강", light: "#ff3b30", dark: "#ff453a" },
+        orange:   { label: "주황", light: "#ff9500", dark: "#ff9f0a" },
+        green:    { label: "초록", light: "#28cd41", dark: "#32d74b" },
+        graphite: { label: "흑연", light: "#8e8e93", dark: "#98989d" }
     })
-    readonly property var accentSet: (accents[accentName] || accents.blue)[dark ? "dark" : "light"]
-    readonly property color accent:        accentSet[0]
-    readonly property color accentHover:   accentSet[1]
-    readonly property color accentPressed: accentSet[2]
-    readonly property color accentInk:     accentSet[3]
-    readonly property color accentSoft:    accentSet[4]
-    readonly property color onAccent:      dark ? "#0b1622" : "#ffffff"
-    readonly property color hover:         dark ? "#2e3035" : "#f0f2f5"
-    readonly property color pressed:       dark ? "#383a40" : "#e4e7ec"
+    readonly property var accentOrder: ["blue", "purple", "pink", "red", "orange", "green", "graphite"]
+    function accentOf(name) { var a = accents[name] || accents.blue; return dark ? a.dark : a.light; }
+    readonly property color accent:        accentOf(accentName)
+    readonly property color accentHover:   Qt.darker(accent, 1.08)
+    readonly property color accentPressed: Qt.darker(accent, 1.18)
+    // Accent as text on light surfaces: a little deeper so it stays legible.
+    readonly property color accentInk:     dark ? Qt.lighter(accent, 1.25) : Qt.darker(accent, accentName === "orange" || accentName === "green" ? 1.45 : 1.12)
+    readonly property color accentSoft:    tint(dark ? .26 : .13)
+    readonly property color inkOnAccent:      "#ffffff"
+    readonly property color hover:         dark ? "#353537" : "#ececf0"
+    readonly property color pressed:       dark ? "#414143" : "#e1e1e6"
     readonly property color focusRing:     accent
-    readonly property color selection:     accentSet[5]
+    readonly property color selection:     tint(dark ? .45 : .28)
 
-    readonly property color warnSurface: dark ? "#3a2f1c" : "#fff4d6"
-    readonly property color warnInk:     dark ? "#f0c98a" : "#7a5518"
-    readonly property color danger:      dark ? "#f08b7b" : "#c4382a"
-    readonly property color dirty:       dark ? "#e0a84f" : "#c77d12"
+    readonly property color warnSurface: dark ? "#3a3020" : "#fff8e5"
+    readonly property color warnInk:     dark ? "#ffd60a" : "#8a5a00"
+    readonly property color danger:      dark ? "#ff453a" : "#ff3b30"
+    readonly property color dirty:       dark ? "#ff9f0a" : "#ff9500"
 
-    readonly property color icon:       dark ? "#c9ccd2" : "#3b3d44"
+    readonly property color icon:       dark ? "#d1d1d6" : "#3a3a3c"
     readonly property color iconActive: accentInk
 
-    readonly property color pageEdge:   dark ? "#00000000" : "#dcdde2"
-    readonly property color shadow:     dark ? "#66000000" : "#161b2a33"
+    readonly property color pageEdge:   dark ? "#00000000" : "#d8d8dd"
+    readonly property color shadow:     dark ? "#66000000" : "#1e000000"
 
-    readonly property int radius: 8
+    readonly property int radius: 8          // buttons, fields
     readonly property int radiusSmall: 6
+    readonly property int radiusLarge: 12    // sheets, popovers, cards
 
     // The accent at a given opacity, for fills over the page.
     function tint(alpha) { return Qt.rgba(accent.r, accent.g, accent.b, alpha); }

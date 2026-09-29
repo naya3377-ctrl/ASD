@@ -20,7 +20,7 @@ Button {
     hoverEnabled: true
     focusPolicy: Qt.TabFocus
     opacity: enabled ? 1 : .38
-    readonly property color tone: primary ? Theme.onAccent : active && !segmented ? Theme.iconActive : Theme.icon
+    readonly property color tone: primary ? Theme.inkOnAccent : active && !segmented ? Theme.iconActive : Theme.icon
     contentItem: Item {
         implicitWidth: contentRow.implicitWidth; implicitHeight: 20
         Row {
@@ -29,7 +29,7 @@ Button {
             Icon { name: control.glyph; tone: control.tone; anchors.verticalCenter: parent.verticalCenter; size: control.glyph.length ? 18 : 0 }
             Text {
                 visible: control.text.length>0; text: control.text; font: control.font
-                color: control.primary ? Theme.onAccent : control.active ? (control.segmented ? Theme.ink : Theme.accentInk) : Theme.inkSoft
+                color: control.primary ? Theme.inkOnAccent : control.active ? (control.segmented ? Theme.ink : Theme.accentInk) : Theme.inkSoft
                 anchors.verticalCenter: parent.verticalCenter
             }
             Text {

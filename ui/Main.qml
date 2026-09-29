@@ -20,7 +20,7 @@ ApplicationWindow {
     palette.button: Theme.raised
     palette.buttonText: Theme.ink
     palette.highlight: Theme.accent
-    palette.highlightedText: Theme.onAccent
+    palette.highlightedText: Theme.inkOnAccent
     palette.light: Theme.raised
     palette.midlight: Theme.line
     palette.mid: Theme.lineStrong
@@ -31,6 +31,12 @@ ApplicationWindow {
     palette.toolTipText: "#f2f5f3"
     Binding { target: Theme; property: "mode"; value: root.pdf ? root.pdf.themeMode : "system" }
     Binding { target: Theme; property: "accentName"; value: root.pdf && root.pdf.accentColor ? root.pdf.accentColor : "blue" }
+    // The Windows title bar takes the theme too (dark mode, and on Windows 11
+    // the tab strip's colour), so title, tabs and toolbar read as one surface.
+    function applyFrame() { if (typeof windowFrame !== "undefined" && windowFrame) windowFrame.apply(Theme.dark, Theme.chrome, Theme.ink); }
+    Connections { target: Theme; function onDarkChanged() { root.applyFrame(); } function onChromeChanged() { root.applyFrame(); } }
+    onVisibleChanged: if (visible) Qt.callLater(applyFrame)
+    Component.onCompleted: Qt.callLater(applyFrame)
     property string uiFontFamily: Qt.platform.os === "windows" ? "Segoe UI Variable" : "Noto Sans CJK KR"
     font.family: uiFontFamily
     font.pixelSize: 14
@@ -454,13 +460,14 @@ ApplicationWindow {
                         width: Math.min(230,Math.max(150,tabTitle.implicitWidth+62)); height: tabStrip.height
                         z: tabDrag.active ? 10 : current ? 2 : 1
                         transform: Translate { x: documentTab.dragOffset }
+                        // Safari-style: the current tab is a raised rounded pill on the
+                        // unified grey bar; others show only on hover.
+                        SoftShadow { visible: documentTab.current; x: 2; y: 8; width: parent.width-4; height: parent.height-12; radius: Theme.radius; spread: 5; offsetY: 1; strength: Theme.dark ? .5 : .1 }
                         Rectangle {
-                            anchors.fill: parent; anchors.topMargin: 6
+                            x: 2; y: 8; width: parent.width-4; height: parent.height-12
                             radius: Theme.radius
-                            color: documentTab.current ? Theme.surface : tabMouse.containsMouse || tabDrag.active ? Theme.hover : "transparent"
-                            border.color: documentTab.current && Theme.dark ? Theme.line : "transparent"
-                            // Square off the bottom so the active tab joins the toolbar.
-                            Rectangle { visible: documentTab.current; anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom; height: Theme.radius; color: Theme.surface }
+                            color: documentTab.current ? (Theme.dark ? "#48484a" : Theme.raised) : tabMouse.containsMouse || tabDrag.active ? Theme.hover : "transparent"
+                            border.width: documentTab.current ? 1 : 0; border.color: Theme.line
                             opacity: tabDrag.active ? .92 : 1
                         }
                         Rectangle { visible: !documentTab.current && documentTab.index+1!==root.tabWorkspace.activeIndex && !tabMouse.containsMouse; anchors.right: parent.right; y: 16; width: 1; height: 16; color: Theme.lineStrong }
@@ -526,7 +533,7 @@ ApplicationWindow {
         }
         // Row 2 · one toolbar: modes on the left, view and file actions on the right.
         Rectangle {
-            Layout.fillWidth: true; implicitHeight: 50; color: Theme.surface
+            Layout.fillWidth: true; implicitHeight: 50; color: Theme.chrome   // one surface with title bar and tabs
             RowLayout {
                 anchors.fill: parent; anchors.leftMargin: 12; anchors.rightMargin: 12; spacing: 4
                 ActionButton { glyph: "sidebar"; hint: "사이드바 · 페이지와 목차"; active: root.sidebarOpen; onClicked: root.sidebarOpen=!root.sidebarOpen }
@@ -1453,28 +1460,27 @@ ApplicationWindow {
                 }
                 Text { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "어두운 테마에서도 PDF 페이지는 원래 색 그대로 보여요."; color: Theme.inkMuted; font.pixelSize: 12; Layout.bottomMargin: 6 }
                 Text { text: "강조 색"; color: Theme.ink }
-                // Accent colour: buttons, selection, search box, current thumbnail.
-                Flow {
-                    objectName: "accentChoice"; Layout.fillWidth: true; spacing: 8; Layout.bottomMargin: 6
+                // Accent colour, as in macOS: a row of colour dots, the name of the chosen one.
+                RowLayout {
+                    objectName: "accentChoice"; Layout.fillWidth: true; spacing: 10; Layout.bottomMargin: 6
                     Repeater {
-                        model: ["blue","green","purple","orange","red","graphite"]
+                        model: Theme.accentOrder
                         delegate: Rectangle {
                             id: swatch; required property string modelData
                             objectName: "accent_"+modelData
                             readonly property bool chosen: Theme.accentName===modelData
-                            width: swatchRow.implicitWidth+18; height: 32; radius: 16
-                            color: chosen ? Theme.accentSoft : swatchArea.containsMouse ? Theme.hover : "transparent"
-                            border.width: chosen ? 1.5 : 1; border.color: chosen ? Theme.accent : Theme.line
-                            Row {
-                                id: swatchRow; anchors.centerIn: parent; spacing: 7
-                                Rectangle { width: 14; height: 14; radius: 7; anchors.verticalCenter: parent.verticalCenter; color: Theme.accents[swatch.modelData][Theme.dark ? "dark" : "light"][0] }
-                                Text { text: Theme.accents[swatch.modelData].label; font.pixelSize: 12; color: Theme.ink; anchors.verticalCenter: parent.verticalCenter }
-                            }
-                            MouseArea { id: swatchArea; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: pdf.setAccentColor(swatch.modelData) }
+                            width: 22; height: 22; radius: 11; color: Theme.accentOf(modelData)
+                            border.width: 1; border.color: Qt.darker(color, 1.15)
+                            Rectangle { visible: swatch.chosen; anchors.centerIn: parent; width: 8; height: 8; radius: 4; color: "white" }
+                            Rectangle { visible: swatch.chosen; anchors.centerIn: parent; width: 30; height: 30; radius: 15; color: "transparent"; border.width: 2; border.color: Theme.tint(.45) }
+                            MouseArea { anchors.fill: parent; anchors.margins: -4; cursorShape: Qt.PointingHandCursor; onClicked: pdf.setAccentColor(swatch.modelData) }
+                            ToolTip.visible: swatchHover.hovered; ToolTip.delay: 400; ToolTip.text: Theme.accents[modelData].label
+                            HoverHandler { id: swatchHover }
                         }
                     }
+                    Text { text: (Theme.accents[Theme.accentName] || Theme.accents.blue).label; font.pixelSize: 12; color: Theme.inkMuted; Layout.leftMargin: 6 }
                 }
-                CheckBox {
+                Switch {
                     visible: typeof library !== "undefined"; text: "최근 문서와 읽던 페이지 기억"
                     checked: typeof library !== "undefined" && library.enabled
                     onToggled: library.setEnabled(checked)
@@ -1489,7 +1495,7 @@ ApplicationWindow {
                 Text { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "한번 본 페이지를 메모리에 보관해 다시 열 때 빠르게 표시합니다. 미리보기·PDF 엔진·그래픽 메모리는 별도로 사용합니다."; color: Theme.inkMuted; font.pixelSize: 12 }
                 ComboBox { Layout.fillWidth: true; model: ["그래픽 가속 · 자동","호환 모드 · 화면 표시 문제가 있을 때"]; currentIndex: pdf.graphicsMode === "software" ? 1 : 0; onActivated: pdf.setGraphicsMode(currentIndex ? "software" : "auto") }
                 Text { text: "그래픽 설정은 앱을 다시 실행하면 적용됩니다."; color: Theme.inkMuted; font.pixelSize: 12 }
-                CheckBox { text: "현재 보는 스캔 페이지 자동 OCR"; checked: pdf.automaticOcr; onToggled: pdf.setAutomaticOcr(checked) }
+                Switch { text: "현재 보는 스캔 페이지 자동 OCR"; checked: pdf.automaticOcr; onToggled: pdf.setAutomaticOcr(checked) }
                 Text { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: "기본은 꺼져 있어요. 스캔 페이지는 위쪽 안내 줄의 \"이 페이지 OCR\" 버튼이나 더보기 › 문자 인식(OCR)으로 필요할 때 인식합니다. 켜 두면 보는 스캔 페이지를 자동으로 인식해요. 저장하면 문자층이 PDF에 남습니다."; color: Theme.inkMuted; font.pixelSize: 13 }
                 ActionButton { text: "오류 로그 폴더 열기"; onClicked: pdf.openLogFolder() }
             }

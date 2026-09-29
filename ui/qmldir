@@ -14,3 +14,4 @@ ScrollInput 1.0 ScrollInput.qml
 TextLayer 1.0 TextLayer.qml
 Segmented 1.0 Segmented.qml
 PrintPreview 1.0 PrintPreview.qml
+SoftShadow 1.0 SoftShadow.qml

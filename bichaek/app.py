@@ -54,7 +54,9 @@ def run_primary(relay):
         identify=ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID
         identify.argtypes=[ctypes.c_wchar_p];identify.restype=ctypes.c_long
         identify('YoonDF.Reader')
-    QQuickStyle.setStyle("Basic")
+    # Our own control style (ui/style/YoonDF), built on Basic: Apple-like
+    # check boxes, switches, pop-up buttons, fields, menus, sheets and scroll bars.
+    QQuickStyle.setStyle("YoonDF")
     app = QApplication(sys.argv)
     app.setApplicationName("YoonDF")
     app.setApplicationDisplayName("윤DF")
@@ -70,6 +72,10 @@ def run_primary(relay):
     documents.library = library
     external = ExternalOpenQueue(documents)
     engine = QQmlApplicationEngine()
+    engine.addImportPath(str(root / "ui" / "style"))
+    from .window_frame import WindowFrame
+    window_frame = WindowFrame()
+    engine.rootContext().setContextProperty("windowFrame", window_frame)
     engine.addImageProvider("pages", images)
     engine.addImageProvider("icon", Icons(root / "assets" / "icons"))
     engine.rootContext().setContextProperty("bridge", documents.activeBridge)
@@ -84,6 +90,7 @@ def run_primary(relay):
     from .window_placement import place_window
     # Before the first frame: centred on the monitor in use, fitted to it.
     main_window = engine.rootObjects()[0]
+    window_frame.window = main_window
     place_window(main_window, preferences)
     from .window_placement import remember_window
     # While windowed the rectangle is tracked, so a later maximize or full

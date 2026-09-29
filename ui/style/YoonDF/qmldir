@@ -1,0 +1,19 @@
+module YoonDF
+import QtQuick.Controls.Basic auto
+Button 6.0 Button.qml
+CheckBox 6.0 CheckBox.qml
+ComboBox 6.0 ComboBox.qml
+Dialog 6.0 Dialog.qml
+DialogButtonBox 6.0 DialogButtonBox.qml
+ItemDelegate 6.0 ItemDelegate.qml
+Menu 6.0 Menu.qml
+MenuItem 6.0 MenuItem.qml
+MenuSeparator 6.0 MenuSeparator.qml
+RadioButton 6.0 RadioButton.qml
+ScrollBar 6.0 ScrollBar.qml
+Slider 6.0 Slider.qml
+SpinBox 6.0 SpinBox.qml
+Switch 6.0 Switch.qml
+TextArea 6.0 TextArea.qml
+TextField 6.0 TextField.qml
+ToolTip 6.0 ToolTip.qml

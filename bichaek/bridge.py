@@ -531,7 +531,7 @@ class Bridge(QObject):
             self.preferences.setValue("themeMode", value)
             self.preferencesChanged.emit()
 
-    ACCENTS = ("blue", "green", "purple", "orange", "red", "graphite")
+    ACCENTS = ("blue", "purple", "pink", "red", "orange", "green", "graphite")
 
     @Property(str, notify=preferencesChanged)
     def accentColor(self):
