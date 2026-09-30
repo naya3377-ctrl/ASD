@@ -1,7 +1,7 @@
 # 윤DF · YoonDF
 
 Acrobat의 도구 구성과 Sumatra·미리보기의 간결한 읽기 화면을 참고한 오프라인 PDF 편집기입니다.
-**1.0.7 · 미리보기 마커와 종이 선택 테두리 수정. Windows 10/11 x64용 설치 EXE와 소스 ZIP. Windows 실기기 실행은 미검증입니다.**
+**1.0.8 · 글자에 붙는 메모, 새 메모 아이콘, 편집 화면 튐 수정. Windows 10/11 x64용 설치 EXE와 소스 ZIP. Windows 실기기 실행은 미검증입니다.**
 
 이 버전은 Python 3.12 + PySide6 / Qt Quick + PyMuPDF로 구현했습니다.
 MuPDF 연산은 별도 프로세스에서 수행하고, Qt Quick이 화면을 표시합니다.
@@ -11,7 +11,7 @@ C++ 전용 프로그램이나 Sumatra와 같은 시작 속도를 검증한 제�
 
 ### Windows 10/11, 64비트
 
-`YoonDF-Setup-1.0.7-x64.exe`를 실행해 설치합니다. Windows에서 `START_WINDOWS.cmd`로 소스를 실행할 수도 있습니다. 설치 파일을 만들려면 `BUILD_WINDOWS.cmd`와 아래 빌드 설명을 참고하세요.
+`YoonDF-Setup-1.0.8-x64.exe`를 실행해 설치합니다. Windows에서 `START_WINDOWS.cmd`로 소스를 실행할 수도 있습니다. 설치 파일을 만들려면 `BUILD_WINDOWS.cmd`와 아래 빌드 설명을 참고하세요.
 시작 메뉴나 바탕 화면의 **윤DF**로 실행합니다.
 Python, Qt, PDF 엔진, 한국어·영어 OCR 데이터를 포함하며 설치·실행에 인터넷이 필요하지 않습니다.
 관리자 권한 없이 현재 사용자 계정에 설치됩니다.

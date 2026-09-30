@@ -165,7 +165,12 @@ Item {
             else if (pressedAnnotation && !layer.markupTool) controller.focusAnnotation(layer.pageNumber,pressedAnnotation.id);
             else if (pressedLink && layer.linkAt(mouse.x/layer.factor,mouse.y/layer.factor)) controller.activateLink(pressedLink);
         }
-        onDoubleClicked: function(mouse) { doubleClick=true; if (!pressedLink) layer.selectWord(mouse.x/layer.factor,mouse.y/layer.factor); }
+        onDoubleClicked: function(mouse) {
+            doubleClick=true;
+            // Double-clicking a mark opens its memo, as in Acrobat.
+            if (pressedAnnotation && pressedAnnotation.editable && layer.allowEdits && controller.canAnnotate) { controller.annotateItem(pressedAnnotation); return; }
+            if (!pressedLink) layer.selectWord(mouse.x/layer.factor,mouse.y/layer.factor);
+        }
         onExited: { layer.hoverLink=null; layer.hoverAnnotation=null; }
         // Links show their target; comment marks show who wrote what, next to the pointer.
         ToolTip {
@@ -207,7 +212,16 @@ Item {
             enabled: layer.allowEdits && controller.canAnnotate && !!layer.contextAnnotation && layer.contextAnnotation.editable
             onTriggered: controller.deleteAnnotationAt(layer.contextAnnotation)
         }
-        MenuItem { objectName: "addMemoMenuItem"; text: "각주(메모) 추가"; enabled: layer.allowEdits && controller.canAnnotate; onTriggered: controller.composeComment(layer.pageNumber,layer.contextPoint.x,layer.contextPoint.y) }
+        // On a mark the memo belongs to that mark; on selected text it becomes
+        // a highlight carrying the memo; elsewhere it is a note at the point.
+        MenuItem {
+            objectName: "addMemoMenuItem"
+            readonly property bool onMark: !!layer.contextAnnotation && layer.contextAnnotation.editable
+            text: onMark ? (layer.contextAnnotation.content ? "메모 수정" : "이 표시에 메모 달기")
+                : layer.selection.count>0 && layer.selection.page===layer.pageNumber ? "선택한 글자에 메모 달기" : "여기에 메모 추가"
+            enabled: layer.allowEdits && controller.canAnnotate
+            onTriggered: onMark ? controller.annotateItem(layer.contextAnnotation) : controller.composeComment(layer.pageNumber,layer.contextPoint.x,layer.contextPoint.y)
+        }
         MenuSeparator { }
         MenuItem { objectName: "copyImageMenuItem"; text: "이미지 복사"; visible: layer.contextImage!==null; height: visible ? implicitHeight : 0; onTriggered: controller.exportImage(layer.contextImage,false) }
         MenuItem { objectName: "saveImageMenuItem"; text: "이미지를 파일로 저장…"; visible: layer.contextImage!==null; height: visible ? implicitHeight : 0; onTriggered: controller.exportImage(layer.contextImage,true) }

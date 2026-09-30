@@ -4,6 +4,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 import base64, hashlib, math, time
 from shiboken6 import isValid
 from .text_geometry import build_lines,SPACING
+from . import __version__
 from PySide6.QtCore import QObject, Signal, Property, Slot, QTimer, QByteArray, QBuffer, QIODevice, QSizeF, QMarginsF, QRectF
 from PySide6.QtGui import (QTextDocument,QTextCursor,QTextCharFormat,QTextFormat,QTextBlockFormat,
     QFont,QFontDatabase,QRawFont,QColor,QImage,QPdfWriter,QPageSize,QPainter)
@@ -383,7 +384,7 @@ class TextEditor(QObject):
         # QPdfWriter rounds its MediaBox to integer points. Round outward and
         # crop on insertion, otherwise stretching to the fractional target
         # silently changes character positions after applying the edit.
-        writer=QPdfWriter(buffer);writer.setResolution(72);writer.setPageSize(QPageSize(QSizeF(math.ceil(self._width),math.ceil(self._height)),QPageSize.Point));writer.setPageMargins(QMarginsF(0,0,0,0));writer.setCreator('YoonDF 1.0.7')
+        writer=QPdfWriter(buffer);writer.setResolution(72);writer.setPageSize(QPageSize(QSizeF(math.ceil(self._width),math.ceil(self._height)),QPageSize.Point));writer.setPageMargins(QMarginsF(0,0,0,0));writer.setCreator('YoonDF '+__version__)
         painter=QPainter(writer)
         if not painter.isActive():raise ValueError('편집 내용을 PDF로 만들지 못했어요.')
         painter.translate(0,self._offset);self.doc.drawContents(painter,QRectF(0,0,self._width,self._height-self._offset));painter.end();buffer.close()

@@ -1,4 +1,4 @@
-"""Production-style UI, brand and no-motion thumbnail regression, 1.0.7.
+"""Production-style UI, brand and no-motion thumbnail regression, 1.0.8.
 SPDX-License-Identifier: AGPL-3.0-or-later
 """
 import os, sys, time
@@ -21,7 +21,7 @@ def main():
     from bichaek.library import Library
     from bichaek.icons import Icons
     QQuickStyle.setStyle('YoonDF')
-    app=QApplication([]);app.setApplicationVersion('1.0.7')
+    app=QApplication([]);app.setApplicationVersion('1.0.8')
     QFontDatabase.addApplicationFontFromData(QByteArray(fitz.Font('korea').buffer))
     from bichaek.ui_fonts import configure_ui_fonts
     configure_ui_fonts(app,ROOT)

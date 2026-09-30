@@ -608,22 +608,28 @@ ApplicationWindow {
             }
             Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: Theme.line }
         }
+        // The edit bar stays while a text tool is chosen, even before a
+        // paragraph is opened, so clicking one never pushes the page down.
         Rectangle {
-            visible: textDialog.visible; Layout.fillWidth: true; height: visible ? 50 : 0; color: Theme.accentSoft
+            objectName: "textEditBar"
+            readonly property bool editing: textDialog.visible
+            visible: textDialog.visible || (root.hasDocument && (root.tool === "editText" || root.tool === "addText"))
+            Layout.fillWidth: true; height: visible ? 50 : 0; color: Theme.accentSoft
             Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: Theme.line }
             RowLayout {
                 anchors.fill: parent; anchors.leftMargin: 14; anchors.rightMargin: 12; spacing: 8
                 Icon { name: "edit"; tone: Theme.accentInk }
-                Text { renderType: Text.QtRendering; renderTypeQuality: Text.HighRenderTypeQuality; text: "본문 편집 중"; color: Theme.accentInk; font.weight: Font.DemiBold; Layout.rightMargin: 6 }
-                FontPicker { id: fontChoice; controller: root.pdf; Layout.fillWidth: true; Layout.maximumWidth: 320; enabled: !pdf.busy }
-                ActionButton { text: "글꼴 파일"; enabled: !pdf.busy; onClicked: pdf.chooseFont() }
-                TextField { id: sizeInput; objectName: "fontSizeInput"; Layout.preferredWidth: 62; text: textDialog.fontSize.toFixed(2); validator: DoubleValidator { bottom:4; top:200 } selectByMouse: true; onTextEdited: if(acceptableInput) {textDialog.fontSize=Number(text);pdf.liveEditor.setSize(Number(text));} }
-                Text { renderType: Text.QtRendering; renderTypeQuality: Text.HighRenderTypeQuality; text: "pt"; color: Theme.inkMuted }
-                Text { renderType: Text.QtRendering; renderTypeQuality: Text.HighRenderTypeQuality; text: textDialog.targetData.mode==="replace" ? "자동 줄바꿈" : "높이"; color: Theme.inkMuted }
-                TextField { visible: textDialog.targetData.mode!=="replace"; objectName: "inlineHeightInput"; Layout.preferredWidth: 62; text: textDialog.areaHeight.toFixed(0); validator: DoubleValidator { bottom:5; top:20000 } selectByMouse: true; onTextEdited: if(acceptableInput) textDialog.areaHeight=Number(text) }
-                Item { Layout.fillWidth: true }
-                ActionButton { objectName: "cancelTextButton"; text: "취소"; enabled: !pdf.busy; onClicked: {root.closeAfterEdit=false;root.pendingEditSave=0;textDialog.close();} }
-                ActionButton { objectName: "applyTextButton"; text: "적용"; primary: true; enabled: !pdf.busy && (textDialog.targetData.mode!=="replace" || pdf.liveEditor.canApply); onClicked: pdf.applyText(textDialog.targetData,textDialog.text,textDialog.fontSize,textDialog.areaHeight) }
+                Text { renderType: Text.QtRendering; renderTypeQuality: Text.HighRenderTypeQuality; text: textDialog.visible ? "본문 편집 중" : root.tool === "addText" ? "글자 추가" : "본문 수정"; color: Theme.accentInk; font.weight: Font.DemiBold; Layout.rightMargin: 6 }
+                Item { visible: !textDialog.visible; Layout.fillWidth: true }
+                FontPicker { id: fontChoice; visible: textDialog.visible; controller: root.pdf; Layout.fillWidth: true; Layout.maximumWidth: 320; enabled: !pdf.busy }
+                ActionButton { visible: textDialog.visible; text: "글꼴 파일"; enabled: !pdf.busy; onClicked: pdf.chooseFont() }
+                TextField { id: sizeInput; visible: textDialog.visible; objectName: "fontSizeInput"; Layout.preferredWidth: 62; text: textDialog.fontSize.toFixed(2); validator: DoubleValidator { bottom:4; top:200 } selectByMouse: true; onTextEdited: if(acceptableInput) {textDialog.fontSize=Number(text);pdf.liveEditor.setSize(Number(text));} }
+                Text { renderType: Text.QtRendering; renderTypeQuality: Text.HighRenderTypeQuality; visible: textDialog.visible; text: "pt"; color: Theme.inkMuted }
+                Text { renderType: Text.QtRendering; renderTypeQuality: Text.HighRenderTypeQuality; visible: textDialog.visible; text: textDialog.targetData.mode==="replace" ? "자동 줄바꿈" : "높이"; color: Theme.inkMuted }
+                TextField { visible: textDialog.visible && textDialog.targetData.mode!=="replace"; objectName: "inlineHeightInput"; Layout.preferredWidth: 62; text: textDialog.areaHeight.toFixed(0); validator: DoubleValidator { bottom:5; top:20000 } selectByMouse: true; onTextEdited: if(acceptableInput) textDialog.areaHeight=Number(text) }
+                Item { visible: textDialog.visible; Layout.fillWidth: true }
+                ActionButton { visible: textDialog.visible; objectName: "cancelTextButton"; text: "취소"; enabled: !pdf.busy; onClicked: {root.closeAfterEdit=false;root.pendingEditSave=0;textDialog.close();} }
+                ActionButton { visible: textDialog.visible; objectName: "applyTextButton"; text: "적용"; primary: true; enabled: !pdf.busy && (textDialog.targetData.mode!=="replace" || pdf.liveEditor.canApply); onClicked: pdf.applyText(textDialog.targetData,textDialog.text,textDialog.fontSize,textDialog.areaHeight) }
             }
         }
         Rectangle {
@@ -874,6 +880,17 @@ ApplicationWindow {
                 boundsBehavior: Flickable.StopAtBounds
                 ScrollBar.vertical: ScrollBar { policy: ScrollBar.AlwaysOn }
                 ScrollBar.horizontal: ScrollBar { }
+                // A row appearing or leaving above the pages (font warning,
+                // tool hint) scrolls by the same amount, so the page under the
+                // pointer stays exactly where it was.
+                readonly property real headerSpan: root.header ? root.header.height : 0
+                property real lastHeaderSpan: 0
+                Component.onCompleted: lastHeaderSpan = headerSpan
+                onHeaderSpanChanged: {
+                    var dy = headerSpan - lastHeaderSpan; lastHeaderSpan = headerSpan;
+                    if (!dy || !visible || !root.header.visible || root.switching || root.restoring || root.presenting || root.focusReading) return;
+                    contentY = Math.max(originY - topMargin, contentY + dy);
+                }
                 onContentYChanged: {
                     var idx = indexAt(contentWidth/2, contentY+height*.33);
                     if (idx >= 0 && !root.switching && !root.restoring && !root.presenting) { var first=idx*root.pageColumns; if(pdf.currentPage<first || pdf.currentPage>=first+root.pageColumns) pdf.setCurrentPage(first); }

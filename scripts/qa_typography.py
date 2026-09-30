@@ -23,7 +23,7 @@ def main():
     from bichaek.library import Library
     from bichaek.icons import Icons
     QQuickStyle.setStyle('YoonDF')
-    app=QApplication([]);app.setApplicationVersion('1.0.7')
+    app=QApplication([]);app.setApplicationVersion('1.0.8')
     configure_ui_fonts(app,ROOT)
     assert QFontInfo(app.font()).family()=='Pretendard'
     assert QQuickWindow.textRenderType()==QQuickWindow.QtTextRendering
@@ -104,7 +104,10 @@ def main():
             assert not warnings,warnings
             print(json.dumps({'status':'PASS','scale':scale,'devicePixelRatio':w.devicePixelRatio(),'uiFontObjects':checked,'weights':4,'renderTypeObjects':render_checked,'graphicsApi':str(w.rendererInterface().graphicsApi()),'sizes':['1000x640','1320x900']},ensure_ascii=False))
         finally:
-            docs.shutdown();w.hide();engine.deleteLater();app.processEvents()
+            docs.shutdown();w.hide();app.processEvents()
+    # Destroy the QML engine while the application and its context are alive,
+    # as the app does on exit; a deferred delete can race interpreter teardown.
+    del w;del engine;app.processEvents()
     return 0
 
 if __name__=='__main__':sys.exit(main())

@@ -4,6 +4,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 from pathlib import Path
 import os
 import fitz
+from . import __version__
 
 
 def open_source(path,password=''):
@@ -62,7 +63,7 @@ def merge_files(items,target,temp_path,events,cancel):
             events.put({'progress':index+1,'total':len(items),'pages':total})
         if cancel.is_set():events.put({'cancelled':True});return
         output.set_toc(bookmarks)
-        output.set_metadata({'title':destination.stem,'creator':'YoonDF 1.0.7'})
+        output.set_metadata({'title':destination.stem,'creator':'YoonDF '+__version__})
         output.save(temp_path,garbage=3,deflate=True)
         output.close();output=None
         with fitz.open(temp_path) as verify:

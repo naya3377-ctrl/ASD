@@ -72,7 +72,7 @@ def main():
         wait(lambda:b.document['count']==6 and not b.busy)
         C.QMetaObject.invokeMethod(w,'goPage',C.Q_ARG('QVariant',3));wait(lambda:b.currentPage==3 and find('paper3') is not None)
         # Text box: an upward drag on a scrolled page draws the box, the list stays put
-        w.useTool('addText');pages=find('pageList');y=pages.property('contentY')
+        w.useTool('addText');QTest.qWait(150);pages=find('pageList');y=pages.property('contentY')
         drag(scene(3,80,260),scene(3,300,120))
         assert abs(pages.property('contentY')-y)<1,('list scrolled',y,pages.property('contentY'))
         wait(lambda:find('legacyTextEditor3').property('visible'))

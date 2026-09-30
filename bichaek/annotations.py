@@ -17,6 +17,7 @@ LABELS = {"Text": "메모", "Highlight": "형광펜", "Underline": "밑줄",
 EDITABLE = {"Text", "Highlight", "Underline", "StrikeOut", "Squiggly"}
 MARKUP = {"highlight": "add_highlight_annot", "underline": "add_underline_annot",
           "strikeout": "add_strikeout_annot", "squiggly": "add_squiggly_annot"}
+MARKUP_TYPES = {"Highlight", "Underline", "StrikeOut", "Squiggly"}
 LOCKS = fitz.PDF_ANNOT_IS_READ_ONLY | fitz.PDF_ANNOT_IS_LOCKED | fitz.PDF_ANNOT_IS_LOCKED_CONTENTS
 
 
@@ -39,7 +40,36 @@ def color_hex(value):
     return "#" + "".join(f"{round(max(0, min(1, v))*255):02x}" for v in value)
 
 
+def note_appearance(rgb):
+    """A rounded speech bubble with three dots, in the note colour, drawn in
+    the 16 pt box MuPDF reserves for a Text icon. Viewers that keep an
+    existing appearance (Acrobat, browsers) show the same bubble."""
+    r, g, b = rgb
+    edge = " ".join(f"{c*0.62:.3f}" for c in rgb)
+    ink = " ".join(f"{c*0.38:.3f}" for c in rgb)
+    k = 0.5523*3.8
+    x0, y0, x1, y1, R = 0.8, 4.0, 15.2, 15.2, 3.8
+    bubble = (f"{x0+R} {y1} m {x1-R} {y1} l {x1-R+k} {y1} {x1} {y1-R+k} {x1} {y1-R} c "
+              f"{x1} {y0+R} l {x1} {y0+R-k} {x1-R+k} {y0} {x1-R} {y0} c "
+              f"{x0+7} {y0} l {x0+1.6} 0.6 l {x0+3.4} {y0} l {x0+R} {y0} l "
+              f"{x0+R-k} {y0} {x0} {y0+R-k} {x0} {y0+R} c {x0} {y1-R} l "
+              f"{x0} {y1-R+k} {x0+R-k} {y1} {x0+R} {y1} c h\n")
+    bubble = re.sub(r"\d+\.\d+", lambda m: f"{float(m.group()):.2f}".rstrip("0").rstrip("."), bubble)
+    dots = "".join(f"{x-0.01:.2f} 9.6 m {x+0.01:.2f} 9.6 l\n" for x in (4.6, 8, 11.4))
+    return (f"q\n{r:.3f} {g:.3f} {b:.3f} rg\n{edge} RG\n0.9 w\n1 j\n{bubble}B\n"
+            f"{ink} RG\n1.9 w\n1 J\n{dots}S\nQ\n").encode()
+
+
 class AnnotationOperations:
+    def _style_note(self, a):
+        """Give YoonDF's own visible notes the bubble icon after MuPDF has
+        (re)generated its default appearance. Other applications' notes and
+        their chosen icons are left alone."""
+        if a.type[1] != "Text" or a.flags & fitz.PDF_ANNOT_IS_NO_VIEW: return
+        if self.pdf.xref_get_key(a.xref, "Name")[1] != "/Comment": return
+        if not str(a.info.get("id", "")).startswith("bichaek-"): return
+        a._setAP(note_appearance(tuple(a.colors.get("stroke") or (1, .835, .31))))
+
     def annotatable(self):
         return bool(self.pdf and (self.owner_authenticated or self.pdf.permissions & fitz.PDF_PERM_ANNOTATE))
 
@@ -88,7 +118,8 @@ class AnnotationOperations:
             grouped = rt == "/Group"
             editable = self._annotation_editable(a)
             result.append({"id": identifiers[a.xref], "name": info.get("id", ""), "page": page,
-                "type": subtype, "label": LABELS.get(subtype, subtype), "rect": list(rect),
+                "type": subtype, "rect": list(rect),
+                "label": "메모" if subtype in MARKUP_TYPES and info.get("subject") == "메모" else LABELS.get(subtype, subtype),
                 "regions": regions or [list(rect)], "content": info.get("content", ""),
                 "author": info.get("title", ""), "subject": info.get("subject", ""),
                 "created": info.get("creationDate", ""), "modified": info.get("modDate", ""),
@@ -118,7 +149,7 @@ class AnnotationOperations:
         state["annotationFocus"] = {"page": page, "id": "nm:"+a.info["id"]}
         return state
 
-    def add_markup(self, page, kind, start, end, author="사용자", content="", color="#ffd54f"):
+    def add_markup(self, page, kind, start, end, author="사용자", content="", color="#ffd54f", subject=None):
         if kind not in MARKUP: raise ValueError("지원하지 않는 텍스트 주석이에요.")
         if not self.owner_authenticated and not self.pdf.permissions & fitz.PDF_PERM_COPY:
             raise ValueError("이 PDF는 텍스트 선택 권한이 제한되어 있어요.")
@@ -138,7 +169,7 @@ class AnnotationOperations:
             raise ValueError("먼저 주석을 남길 글자를 드래그해 선택해 주세요.")
         with self.transaction(annotation=True, pages=[page]):
             a = getattr(p, MARKUP[kind])(quads)
-            self._new_annotation_info(a, author, content, color, LABELS[a.type[1]])
+            self._new_annotation_info(a, author, content, color, subject or LABELS[a.type[1]])
         return self._annotation_result(page, a)
 
     def add_comment(self, page, point, content, author="사용자", color="#ffd54f"):
@@ -151,6 +182,7 @@ class AnnotationOperations:
         with self.transaction(annotation=True, pages=[page]):
             a = p.add_text_annot(point, content, icon="Comment")
             self._new_annotation_info(a, author, content, color, "메모")
+            self._style_note(a)
         return self._annotation_result(page, a)
 
     def update_annotation(self, page, identifier, content, author, color=None, revision=None):
@@ -171,6 +203,7 @@ class AnnotationOperations:
             if color is not None and color.lower() != item["color"].lower():
                 a.set_colors(stroke=color_rgb(color))
                 a.update()
+                self._style_note(a)
             # Preserve existing /AP, popup, review and vendor-specific fields
             # when only comment text or author changed.
         return self._annotation_result(page, a)
@@ -209,6 +242,7 @@ class AnnotationOperations:
             self.pdf.xref_set_key(a.xref, 'Rect', '['+' '.join(format(v,'.9g') for v in raw)+']')
             a.set_info(modDate=pdf_date())
             a.update()
+            self._style_note(a)
         return self._annotation_result(page,a)
 
     def delete_annotation(self, page, identifier, revision=None):

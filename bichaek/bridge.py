@@ -1439,9 +1439,15 @@ class Bridge(QObject):
     def composeComment(self, page, x, y):
         if not self.canAnnotate or self._text_editor_open or self._annotation_editor_open: return
         self.openComments.emit()
-        self.showAnnotationEditor.emit({'mode':'new', 'page':page, 'point':[x,y],
+        data = {'mode':'new', 'page':page, 'point':[x,y],
             'author':self.annotationAuthor, 'color':self.annotationColor, 'content':'',
-            'session':self._state['session'], 'revision':self._state['revision']})
+            'session':self._state['session'], 'revision':self._state['revision']}
+        # With letters selected on this page the note belongs to that text:
+        # it is saved as a highlight carrying the note, not a page icon.
+        if page == self._text_page and self._text_start != self._text_end:
+            data.update(range=[self._text_start, self._text_end],
+                        quote=self._selected_text.replace('\n', ' ')[:200])
+        self.showAnnotationEditor.emit(data)
 
     @Slot(bool)
     def setAnnotationEditorVisible(self, visible):
@@ -1457,6 +1463,15 @@ class Bridge(QObject):
             content='' if mode=='reply' else item['content'],
             author=self.annotationAuthor if mode=='reply' else item['author']))
 
+    @Slot('QVariantMap')
+    def annotateItem(self, item):
+        """Write or change the memo of a mark on the page (a highlight,
+        underline or note), as a double-click in Acrobat opens its note."""
+        item = dict(item or {})
+        if not item.get('editable') or not self.canAnnotate or self._text_editor_open or self._annotation_editor_open: return
+        self.focusAnnotation(item['page'], item['id'])
+        self.showAnnotationEditor.emit(dict(item, mode='edit'))
+
     @Slot('QVariantMap', str, str, str)
     def commitAnnotation(self, data, content, author, color):
         data = dict(data)
@@ -1465,7 +1480,11 @@ class Bridge(QObject):
             return
         if not self.canAnnotate: return
         if data['mode'] != 'edit': self.setAnnotationAuthor(author)
-        if data['mode']=='new':
+        if data['mode']=='new' and data.get('range'):
+            op = 'add_markup'
+            args = {'page':data['page'], 'kind':'highlight', 'start':data['range'][0], 'end':data['range'][1],
+                    'content':content, 'author':author, 'color':color, 'subject':'메모'}
+        elif data['mode']=='new':
             op = 'add_comment'
             args = {'page':data['page'], 'point':data['point'], 'content':content,
                     'author':author, 'color':color}
