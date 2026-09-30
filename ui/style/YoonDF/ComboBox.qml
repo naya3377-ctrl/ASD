@@ -6,8 +6,8 @@ import QtQuick.Controls.Basic as B
 import "../.."
 B.ComboBox {
     id: control
-    implicitHeight: 32
-    font.pixelSize: 13
+    implicitHeight: 36
+    font.pixelSize: 14
     opacity: enabled ? 1 : .45
     delegate: ItemDelegate {
         required property var model
@@ -18,7 +18,7 @@ B.ComboBox {
         highlighted: control.highlightedIndex === index
         font.weight: control.currentIndex === index ? Font.DemiBold : Font.Normal
     }
-    contentItem: Text {
+    contentItem: Text { renderType: Text.QtRendering; renderTypeQuality: Text.HighRenderTypeQuality;
         leftPadding: 11; rightPadding: control.indicator.width + 6
         text: control.displayText; font: control.font; color: Theme.ink
         verticalAlignment: Text.AlignVCenter; elide: Text.ElideRight

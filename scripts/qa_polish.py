@@ -1,4 +1,4 @@
-"""Production-style UI, brand and no-motion thumbnail regression, 1.0.4.
+"""Production-style UI, brand and no-motion thumbnail regression, 1.0.7.
 SPDX-License-Identifier: AGPL-3.0-or-later
 """
 import os, sys, time
@@ -21,8 +21,10 @@ def main():
     from bichaek.library import Library
     from bichaek.icons import Icons
     QQuickStyle.setStyle('YoonDF')
-    app=QApplication([]);app.setApplicationVersion('1.0.4')
+    app=QApplication([]);app.setApplicationVersion('1.0.7')
     QFontDatabase.addApplicationFontFromData(QByteArray(fitz.Font('korea').buffer))
+    from bichaek.ui_fonts import configure_ui_fonts
+    configure_ui_fonts(app,ROOT)
     errors=[];warnings=[]
     qInstallMessageHandler(lambda k,c,t: warnings.append(t) if 'file:' in t or 'Error' in t else None)
     images=Images();docs=Documents(images);b=docs.activeBridge
@@ -34,7 +36,7 @@ def main():
     for name,value in [('bridge',b),('documents',docs),('library',library),('iconTint',True)]:engine.rootContext().setContextProperty(name,value)
     engine.load(QUrl.fromLocalFile(str(ROOT/'ui/Main.qml')))
     assert engine.rootObjects(),warnings
-    w=engine.rootObjects()[0];w.setProperty('uiFontFamily','Droid Sans Fallback')
+    w=engine.rootObjects()[0];w.setProperty('uiFontFamily','Pretendard')
     out=ROOT/'test-output/polish';out.mkdir(parents=True,exist_ok=True)
     def wait(pred,seconds=30):
         start=time.monotonic()
@@ -81,8 +83,29 @@ def main():
         wait(lambda:b.document['count']==4 and bool(b.imageUrl(0,'thumb')))
         thumbs=find('thumbnailList');assert thumbs.property('highlightMoveDuration')==0
         assert thumbs.property('highlightResizeDuration')==0
+        assert b.selection==[],b.selection
+        assert find('thumbnailCurrentMarker0').isVisible()
+        assert not find('thumbnailSelectionFrame0').isVisible()
+        w.goPage(1);wait(lambda:b.currentPage==1 and not w.property('restoring'))
+        assert b.selection==[] and find('thumbnailCurrentMarker1').isVisible()
+        assert not find('thumbnailSelectionFrame1').isVisible()
+        w.grabWindow().save(str(out/'marker-only.png'))
         before=b.currentPage
         click('thumbnailPaper1');wait(lambda:b.currentPage==1)
+        assert b.selection==[1],b.selection
+        frame=find('thumbnailSelectionFrame1');paper=find('thumbnailPaper1')
+        assert frame.isVisible() and frame.width()==paper.width() and frame.height()==paper.height()
+        assert frame.x()==0 and frame.y()==0
+        w.grabWindow().save(str(out/'paper-selection.png'))
+        # Current-page navigation and reading do not create or move selections.
+        w.goPage(2);wait(lambda:b.currentPage==2 and not w.property('restoring'))
+        assert b.selection==[1] and not find('thumbnailSelectionFrame2').isVisible()
+        assert find('thumbnailCurrentMarker2').isVisible()
+        b.selectPage(1,True,False);QTest.qWait(100)
+        assert b.selection==[] and not frame.isVisible()
+        b.update_state(dict(b.document));QTest.qWait(100)
+        assert b.selection==[],b.selection
+        click('thumbnailPaper1');wait(lambda:b.selection==[1])
         preview=find('thumbnailImage1');paper=find('thumbnailPaper1')
         # The image/geometry have no fade, slide or zoom between frames.
         states=[]

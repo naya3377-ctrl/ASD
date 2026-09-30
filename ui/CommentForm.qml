@@ -11,13 +11,13 @@ ColumnLayout {
     spacing: 8
     Component.onCompleted: { body.text = draft.text; author.text = draft.author; body.forceActiveFocus(); }
 
-    Text {
+    Text { renderType: Text.QtRendering; renderTypeQuality: Text.HighRenderTypeQuality;
         text: form.draft.mode === "reply" ? "답글 작성" : form.draft.mode === "edit" ? "메모 수정" : "새 메모 · " + (Number(form.draft.targetData.page || 0) + 1) + "쪽"
-        font.pixelSize: 12; font.weight: Font.DemiBold; color: Theme.accentInk
+        font.pixelSize: 13; font.weight: Font.DemiBold; color: Theme.accentInk
     }
     TextField {
         id: author; objectName: "commentAuthor"; Layout.fillWidth: true
-        placeholderText: "작성자"; selectByMouse: true; font.pixelSize: 12; color: Theme.ink
+        placeholderText: "작성자"; selectByMouse: true; font.pixelSize: 13; color: Theme.ink
         enabled: !form.draft.controller.busy
         background: Rectangle { radius: Theme.radiusSmall; color: Theme.field; border.color: author.activeFocus ? Theme.focusRing : Theme.line }
         onTextChanged: form.draft.author = text
@@ -28,7 +28,7 @@ ColumnLayout {
             id: body; objectName: "commentBody"
             placeholderText: form.draft.mode === "reply" ? "답글을 입력하세요" : "메모를 입력하세요"
             wrapMode: TextEdit.Wrap; textFormat: TextEdit.PlainText; selectByMouse: true
-            font.pixelSize: 13; color: Theme.ink; enabled: !form.draft.controller.busy
+            font.pixelSize: 14; color: Theme.ink; enabled: !form.draft.controller.busy
             background: Rectangle { radius: Theme.radiusSmall; color: Theme.field; border.color: body.activeFocus ? Theme.focusRing : Theme.line }
             onTextChanged: form.draft.text = text
             Keys.onPressed: function(event) {

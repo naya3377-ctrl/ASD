@@ -69,7 +69,7 @@ Item {
                 visible: box.chosen && !box.moving; width: 22; height: 22; radius: 11
                 x: parent.width-width/2; y: -height/2
                 color: deleteArea.containsMouse ? Theme.danger : "white"; border.color: Theme.danger; border.width: 1.5
-                Text { anchors.centerIn: parent; text: "✕"; font.pixelSize: 12; font.bold: true; color: deleteArea.containsMouse ? "white" : Theme.danger }
+                Text { renderType: Text.QtRendering; renderTypeQuality: Text.HighRenderTypeQuality; anchors.centerIn: parent; text: "✕"; font.pixelSize: 13; font.bold: true; color: deleteArea.containsMouse ? "white" : Theme.danger }
                 MouseArea {
                     id: deleteArea; anchors.fill: parent; anchors.margins: -3; hoverEnabled: true; enabled: !controller.busy
                     cursorShape: Qt.PointingHandCursor; onClicked: imageLayer.remove(box.modelData)

@@ -58,11 +58,11 @@ Rectangle {
         anchors.fill: parent; anchors.leftMargin: 14; anchors.rightMargin: 12; anchors.topMargin: 12; anchors.bottomMargin: 10; spacing: 10
         RowLayout {
             Layout.fillWidth: true; spacing: 6
-            Text { text: "주석"; font.pixelSize: 17; font.weight: Font.DemiBold; color: Theme.ink }
+            Text { renderType: Text.QtRendering; renderTypeQuality: Text.HighRenderTypeQuality; text: "주석"; font.pixelSize: 17; font.weight: Font.DemiBold; color: Theme.ink }
             Rectangle {
                 radius: 9; color: Theme.surfaceAlt; border.color: Theme.line
                 implicitWidth: countText.implicitWidth + 14; implicitHeight: 18
-                Text { id: countText; anchors.centerIn: parent; text: panel.controller.annotations.length; font.pixelSize: 11; color: Theme.inkMuted }
+                Text { renderType: Text.QtRendering; renderTypeQuality: Text.HighRenderTypeQuality; id: countText; anchors.centerIn: parent; text: panel.controller.annotations.length; font.pixelSize: 12; color: Theme.inkMuted }
             }
             Item { Layout.fillWidth: true }
             BusyIndicator { running: panel.controller.annotationsLoading; visible: running; Layout.preferredWidth: 20; Layout.preferredHeight: 20 }
@@ -92,10 +92,10 @@ Rectangle {
         }
         RowLayout {
             Layout.fillWidth: true; spacing: 6
-            Text { text: "작성자"; font.pixelSize: 12; color: Theme.inkMuted }
+            Text { renderType: Text.QtRendering; renderTypeQuality: Text.HighRenderTypeQuality; text: "작성자"; font.pixelSize: 13; color: Theme.inkMuted }
             TextField {
                 objectName: "annotationAuthorInput"; Layout.fillWidth: true; text: panel.controller.annotationAuthor
-                placeholderText: "이름"; selectByMouse: true; font.pixelSize: 12; color: Theme.ink; implicitHeight: 28
+                placeholderText: "이름"; selectByMouse: true; font.pixelSize: 13; color: Theme.ink; implicitHeight: 28
                 background: Rectangle { radius: Theme.radiusSmall; color: Theme.field; border.color: parent.activeFocus ? Theme.focusRing : Theme.line }
                 onEditingFinished: panel.controller.setAnnotationAuthor(text)
             }
@@ -121,10 +121,10 @@ Rectangle {
               id: entry; required property var modelData; required property int index
               width: comments.width; spacing: 4
               // Page heading above the first card of each page.
-              Text {
+              Text { renderType: Text.QtRendering; renderTypeQuality: Text.HighRenderTypeQuality;
                   visible: entry.index===0 || panel.controller.annotations[entry.index-1].page!==entry.modelData.page
                   topPadding: 10
-                  text: (entry.modelData.page+1)+"쪽"; font.pixelSize: 11; font.weight: Font.DemiBold; color: Theme.inkMuted
+                  text: (entry.modelData.page+1)+"쪽"; font.pixelSize: 12; font.weight: Font.DemiBold; color: Theme.inkMuted
               }
               Rectangle {
                 id: card; readonly property var modelData: entry.modelData; readonly property int index: entry.index
@@ -148,27 +148,27 @@ Rectangle {
                     anchors.leftMargin: 14; anchors.rightMargin: 12; anchors.topMargin: 10; spacing: 5
                     RowLayout {
                         Layout.fillWidth: true; spacing: 6
-                        Text { text: card.modelData.reply ? "↳ 답글" : card.modelData.label; font.pixelSize: 11; color: Theme.inkMuted; textFormat: Text.PlainText }
-                        Text { text: card.modelData.author || "작성자 없음"; Layout.fillWidth: true; elide: Text.ElideRight; font.pixelSize: 12; font.weight: Font.DemiBold; color: Theme.ink; textFormat: Text.PlainText }
-                        Text {
-                            visible: !!card.modelData.created; font.pixelSize: 10; color: Theme.inkFaint; textFormat: Text.PlainText
+                        Text { renderType: Text.QtRendering; renderTypeQuality: Text.HighRenderTypeQuality; text: card.modelData.reply ? "↳ 답글" : card.modelData.label; font.pixelSize: 12; color: Theme.inkMuted; textFormat: Text.PlainText }
+                        Text { renderType: Text.QtRendering; renderTypeQuality: Text.HighRenderTypeQuality; text: card.modelData.author || "작성자 없음"; Layout.fillWidth: true; elide: Text.ElideRight; font.pixelSize: 13; font.weight: Font.DemiBold; color: Theme.ink; textFormat: Text.PlainText }
+                        Text { renderType: Text.QtRendering; renderTypeQuality: Text.HighRenderTypeQuality;
+                            visible: !!card.modelData.created; font.pixelSize: 11; color: Theme.inkFaint; textFormat: Text.PlainText
                             text: card.modelData.created.slice(0,2)==="D:" ? card.modelData.created.slice(2,6)+"."+card.modelData.created.slice(6,8)+"."+card.modelData.created.slice(8,10) : card.modelData.created
                         }
                     }
                     // The marked words, so the card says what it is about.
-                    Text {
+                    Text { renderType: Text.QtRendering; renderTypeQuality: Text.HighRenderTypeQuality;
                         visible: !!card.modelData.quote && !card.modelData.reply; Layout.fillWidth: true
                         text: "“" + card.modelData.quote.replace(/\s+/g," ") + "”"; wrapMode: Text.Wrap
                         maximumLineCount: card.selected ? 4 : 2; elide: Text.ElideRight
-                        font.pixelSize: 11; font.italic: true; color: Theme.inkMuted; textFormat: Text.PlainText
+                        font.pixelSize: 12; font.italic: true; color: Theme.inkMuted; textFormat: Text.PlainText
                     }
-                    Text {
+                    Text { renderType: Text.QtRendering; renderTypeQuality: Text.HighRenderTypeQuality;
                         visible: !card.drafting || panel.draft.mode === "reply"; Layout.fillWidth: true
                         text: card.modelData.content || (card.modelData.state ? "검토 상태: "+card.modelData.state : card.modelData.quote ? "" : "내용 없는 주석")
                         wrapMode: Text.Wrap; maximumLineCount: card.selected ? 8 : 3; elide: Text.ElideRight
-                        font.pixelSize: 13; color: Theme.inkSoft; textFormat: Text.PlainText
+                        font.pixelSize: 14; color: Theme.inkSoft; textFormat: Text.PlainText
                     }
-                    Text { visible: !card.modelData.editable && card.selected; Layout.fillWidth: true; text: "읽기 전용 · 원본 주석 보존"; font.pixelSize: 10; color: Theme.inkFaint }
+                    Text { renderType: Text.QtRendering; renderTypeQuality: Text.HighRenderTypeQuality; visible: !card.modelData.editable && card.selected; Layout.fillWidth: true; text: "읽기 전용 · 원본 주석 보존"; font.pixelSize: 11; color: Theme.inkFaint }
                     RowLayout {
                         visible: card.selected && card.modelData.editable && !card.drafting; spacing: 2; Layout.topMargin: 2
                         ActionButton { objectName: "editComment"+card.index; compact: true; text: "수정"; enabled: panel.allowActions && panel.controller.canAnnotate; onClicked: { panel.settleDraft(); panel.controller.editSelectedAnnotation("edit"); } }
@@ -186,10 +186,10 @@ Rectangle {
             Column {
                 visible: !comments.count && !panel.controller.annotationsLoading && !panel.draft.visible
                 anchors.centerIn: parent; width: parent.width-24; spacing: 6
-                Text { width: parent.width; horizontalAlignment: Text.AlignHCenter; text: "아직 주석이 없어요"; font.pixelSize: 13; font.weight: Font.Medium; color: Theme.inkSoft }
-                Text { width: parent.width; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.WordWrap; text: "글자를 선택하고 형광펜을 누르거나, 메모 도구로 페이지를 클릭해 보세요."; font.pixelSize: 12; lineHeight: 1.3; color: Theme.inkMuted }
+                Text { renderType: Text.QtRendering; renderTypeQuality: Text.HighRenderTypeQuality; width: parent.width; horizontalAlignment: Text.AlignHCenter; text: "아직 주석이 없어요"; font.pixelSize: 14; font.weight: Font.Medium; color: Theme.inkSoft }
+                Text { renderType: Text.QtRendering; renderTypeQuality: Text.HighRenderTypeQuality; width: parent.width; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.WordWrap; text: "글자를 선택하고 형광펜을 누르거나, 메모 도구로 페이지를 클릭해 보세요."; font.pixelSize: 13; lineHeight: 1.3; color: Theme.inkMuted }
             }
         }
-        Text { Layout.fillWidth: true; text: "카드를 누르면 그 위치로 이동해요 · 주석은 저장하면 PDF에 함께 남아요"; wrapMode: Text.WordWrap; font.pixelSize: 11; color: Theme.inkFaint }
+        Text { renderType: Text.QtRendering; renderTypeQuality: Text.HighRenderTypeQuality; Layout.fillWidth: true; text: "카드를 누르면 그 위치로 이동해요 · 주석은 저장하면 PDF에 함께 남아요"; wrapMode: Text.WordWrap; font.pixelSize: 12; color: Theme.inkFaint }
     }
 }

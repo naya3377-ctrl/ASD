@@ -6,7 +6,7 @@ import "../.."
 B.CheckBox {
     id: control
     spacing: 9
-    font.pixelSize: 13
+    font.pixelSize: 14
     opacity: enabled ? 1 : .45
     indicator: Rectangle {
         implicitWidth: 18; implicitHeight: 18
@@ -17,7 +17,7 @@ B.CheckBox {
         border.color: control.visualFocus ? Theme.focusRing : Theme.lineStrong
         Icon { anchors.centerIn: parent; visible: control.checked; name: "check"; size: 14; tone: Theme.inkOnAccent }
     }
-    contentItem: Text {
+    contentItem: Text { renderType: Text.QtRendering; renderTypeQuality: Text.HighRenderTypeQuality;
         leftPadding: control.indicator.width + control.spacing
         text: control.text; font: control.font; color: Theme.ink
         verticalAlignment: Text.AlignVCenter; wrapMode: Text.WordWrap

@@ -6,7 +6,7 @@ import "../.."
 B.RadioButton {
     id: control
     spacing: 9
-    font.pixelSize: 13
+    font.pixelSize: 14
     opacity: enabled ? 1 : .45
     indicator: Rectangle {
         implicitWidth: 18; implicitHeight: 18
@@ -17,7 +17,7 @@ B.RadioButton {
         border.color: control.visualFocus ? Theme.focusRing : Theme.lineStrong
         Rectangle { anchors.centerIn: parent; visible: control.checked; width: 7; height: 7; radius: 3.5; color: "white" }
     }
-    contentItem: Text {
+    contentItem: Text { renderType: Text.QtRendering; renderTypeQuality: Text.HighRenderTypeQuality;
         leftPadding: control.indicator.width + control.spacing
         text: control.text; font: control.font; color: Theme.ink
         verticalAlignment: Text.AlignVCenter

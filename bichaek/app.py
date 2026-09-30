@@ -63,8 +63,9 @@ def run_primary(relay):
     app.setOrganizationName("Bichaek")
     from . import __version__
     app.setApplicationVersion(__version__)
-    app.setFont(QFont("Malgun Gothic" if os.name == "nt" else "Noto Sans CJK KR", 10))
     root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent.parent))
+    from .ui_fonts import configure_ui_fonts
+    configure_ui_fonts(app, root)
     app.setWindowIcon(QIcon(str(root / "assets" / "icon.ico")))
     images = Images()
     library = Library(preferences)

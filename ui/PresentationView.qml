@@ -80,7 +80,7 @@ FocusScope {
             source: view.pageImage; fillMode: Image.Stretch; cache: false; asynchronous: true
             retainWhileLoading: false; smooth: true
         }
-        Text {
+        Text { renderType: Text.QtRendering; renderTypeQuality: Text.HighRenderTypeQuality;
             anchors.centerIn: parent; visible: !view.pageImage
             text: view.renderError ? "페이지를 표시하지 못했어요." : "페이지 불러오는 중…"
             color: "#7d8d83"; font.pixelSize: 14
@@ -116,7 +116,7 @@ FocusScope {
         anchors.top: parent.top; anchors.horizontalCenter: parent.horizontalCenter; anchors.topMargin: 12
         width: Math.min(parent.width-36,title.implicitWidth+30); height: 30; radius: 7
         color: "#d9101713"; visible: view.controlsVisible
-        Text { id: title; anchors.fill: parent; anchors.leftMargin: 15; anchors.rightMargin: 15; verticalAlignment: Text.AlignVCenter; text: "윤DF · "+view.controller.document.name; elide: Text.ElideMiddle; font.pixelSize: 12; color: "#dce5de" }
+        Text { renderType: Text.QtRendering; renderTypeQuality: Text.HighRenderTypeQuality; id: title; anchors.fill: parent; anchors.leftMargin: 15; anchors.rightMargin: 15; verticalAlignment: Text.AlignVCenter; text: "윤DF · "+view.controller.document.name; elide: Text.ElideMiddle; font.pixelSize: 13; color: "#dce5de" }
     }
     Rectangle {
         id: controls; objectName: "presentationControls"
@@ -127,7 +127,7 @@ FocusScope {
         RowLayout {
             id: toolbar; anchors.centerIn: parent; spacing: 8
             ActionButton { objectName: "slidePreviousButton"; glyph: "left"; enabled: view.page>0; hint: "이전 페이지 · ← / ↑ / Page Up"; onClicked: { view.move(-1); view.showControls(); } }
-            Text { objectName: "slidePageNumber"; text: (view.page+1)+" / "+view.controller.document.count; horizontalAlignment: Text.AlignHCenter; Layout.minimumWidth: 76; color: "#314f3c"; font.pixelSize: 13; font.weight: Font.DemiBold }
+            Text { renderType: Text.QtRendering; renderTypeQuality: Text.HighRenderTypeQuality; objectName: "slidePageNumber"; text: (view.page+1)+" / "+view.controller.document.count; horizontalAlignment: Text.AlignHCenter; Layout.minimumWidth: 76; color: "#314f3c"; font.pixelSize: 14; font.weight: Font.DemiBold }
             ActionButton { objectName: "slideNextButton"; glyph: "right"; enabled: view.page<view.controller.document.count-1; hint: "다음 페이지 · → / ↓ / Page Down / Space"; onClicked: { view.move(1); view.showControls(); } }
             Rectangle { width: 1; height: 22; color: "#d8e3da" }
             ActionButton { objectName: "exitPresentationButton"; text: "종료 · Esc"; onClicked: view.exitRequested() }

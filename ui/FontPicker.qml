@@ -10,7 +10,7 @@ Button {
     readonly property bool popupOpen: popup.visible
     text: controller.fontOptions[currentIndex] ? controller.fontOptions[currentIndex].label : "글꼴 검색"
     implicitWidth: 260; implicitHeight: 36
-    contentItem: Text { text: picker.text+"  ▾"; color: Theme.ink; verticalAlignment: Text.AlignVCenter; elide: Text.ElideRight; leftPadding: 10; rightPadding: 10; font.pixelSize: 13 }
+    contentItem: Text { renderType: Text.QtRendering; renderTypeQuality: Text.HighRenderTypeQuality; text: picker.text+"  ▾"; color: Theme.ink; verticalAlignment: Text.AlignVCenter; elide: Text.ElideRight; leftPadding: 10; rightPadding: 10; font.pixelSize: 14 }
     background: Rectangle { color: Theme.field; border.color: popup.visible ? Theme.focusRing : Theme.lineStrong; radius: Theme.radiusSmall }
     onClicked: {popup.open();fontSearch.forceActiveFocus();}
     Popup {
@@ -35,7 +35,7 @@ Button {
                     highlighted: index===fontList.currentIndex
                     onClicked: {picker.controller.setFontChoice(modelData.key);popup.close();}
                 }
-                Text { visible: fontList.count===0; anchors.centerIn: parent; text: "일치하는 글꼴이 없어요"; color: Theme.inkMuted }
+                Text { renderType: Text.QtRendering; renderTypeQuality: Text.HighRenderTypeQuality; visible: fontList.count===0; anchors.centerIn: parent; text: "일치하는 글꼴이 없어요"; color: Theme.inkMuted }
             }
         }
         onClosed: fontSearch.text=""

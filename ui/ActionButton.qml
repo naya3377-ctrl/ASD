@@ -12,10 +12,10 @@ Button {
     property string glyph: ""
     property string hint: ""
     property string shortcutText: ""
-    implicitHeight: compact ? 30 : 34
+    implicitHeight: compact ? 34 : 38
     implicitWidth: Math.max(implicitHeight, contentItem.implicitWidth + (text.length ? 24 : 16))
     leftPadding: text.length ? 12 : 8; rightPadding: text.length ? 12 : 8
-    font.pixelSize: 13
+    font.pixelSize: 14
     font.weight: primary || active ? Font.DemiBold : Font.Normal
     hoverEnabled: true
     focusPolicy: Qt.TabFocus
@@ -27,14 +27,14 @@ Button {
             id: contentRow; spacing: 7; anchors.verticalCenter: parent.verticalCenter
             x: control.leftAligned ? 0 : (parent.width-width)/2
             Icon { name: control.glyph; tone: control.tone; anchors.verticalCenter: parent.verticalCenter; size: control.glyph.length ? 18 : 0 }
-            Text {
+            Text { renderType: Text.QtRendering; renderTypeQuality: Text.HighRenderTypeQuality;
                 visible: control.text.length>0; text: control.text; font: control.font
                 color: control.primary ? Theme.inkOnAccent : control.active ? (control.segmented ? Theme.ink : Theme.accentInk) : Theme.inkSoft
                 anchors.verticalCenter: parent.verticalCenter
             }
-            Text {
+            Text { renderType: Text.QtRendering; renderTypeQuality: Text.HighRenderTypeQuality;
                 visible: control.shortcutText.length>0 && control.leftAligned; text: control.shortcutText
-                font.pixelSize: 11; color: Theme.inkMuted; anchors.verticalCenter: parent.verticalCenter
+                font.pixelSize: 12; color: Theme.inkMuted; anchors.verticalCenter: parent.verticalCenter
             }
         }
     }

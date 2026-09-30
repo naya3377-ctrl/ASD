@@ -9,12 +9,12 @@ B.Dialog {
     enter: Transition { NumberAnimation { property: "opacity"; from: 0; to: 1; duration: Theme.motionNormal; easing.type: Easing.OutCubic } }
     exit: Transition { } // Release popup/modal input immediately on close.
     padding: 20; topPadding: 8
-    font.pixelSize: 13
+    font.pixelSize: 14
     background: Item {
         SoftShadow { anchors.fill: parent; radius: Theme.radiusLarge; spread: 26; offsetY: 10 }
         Rectangle { anchors.fill: parent; radius: Theme.radiusLarge; color: Theme.dark ? "#2c2c2e" : "#ffffff"; border.width: 1; border.color: Theme.line }
     }
-    header: Text {
+    header: Text { renderType: Text.QtRendering; renderTypeQuality: Text.HighRenderTypeQuality;
         visible: control.title.length > 0
         text: control.title; padding: 20; bottomPadding: 6
         font.pixelSize: 15; font.weight: Font.DemiBold; color: Theme.ink; elide: Text.ElideRight

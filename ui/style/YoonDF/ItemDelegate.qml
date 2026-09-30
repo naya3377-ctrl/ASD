@@ -4,8 +4,8 @@ import QtQuick.Controls.Basic as B
 import "../.."
 B.ItemDelegate {
     id: control
-    font.pixelSize: 13
-    contentItem: Text {
+    font.pixelSize: 14
+    contentItem: Text { renderType: Text.QtRendering; renderTypeQuality: Text.HighRenderTypeQuality;
         text: control.text; font: control.font; elide: Text.ElideRight; verticalAlignment: Text.AlignVCenter
         color: control.highlighted ? Theme.inkOnAccent : Theme.ink
     }

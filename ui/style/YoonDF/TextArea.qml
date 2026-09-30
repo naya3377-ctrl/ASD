@@ -5,7 +5,7 @@ import "../.."
 B.TextArea {
     id: control
     padding: 8
-    font.pixelSize: 13
+    font.pixelSize: 14
     color: Theme.ink
     placeholderTextColor: Theme.inkMuted
     selectionColor: Theme.selection; selectedTextColor: Theme.ink

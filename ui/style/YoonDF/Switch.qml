@@ -6,7 +6,7 @@ import "../.."
 B.Switch {
     id: control
     spacing: 10
-    font.pixelSize: 13
+    font.pixelSize: 14
     opacity: enabled ? 1 : .45
     indicator: Rectangle {
         implicitWidth: 38; implicitHeight: 22
@@ -22,7 +22,7 @@ B.Switch {
             Behavior on x { NumberAnimation { duration: Theme.motionFast; easing.type: Easing.OutCubic } }
         }
     }
-    contentItem: Text {
+    contentItem: Text { renderType: Text.QtRendering; renderTypeQuality: Text.HighRenderTypeQuality;
         leftPadding: control.indicator.width + control.spacing
         text: control.text; font: control.font; color: Theme.ink
         verticalAlignment: Text.AlignVCenter; wrapMode: Text.WordWrap

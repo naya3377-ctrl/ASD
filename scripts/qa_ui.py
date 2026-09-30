@@ -66,10 +66,15 @@ def main():
         # A plain click narrows to one page; dragging a multi-selection moves them all.
         QTest.mouseClick(window,Qt.LeftButton,Qt.NoModifier,QPoint(110,240));app.processEvents();QTest.qWait(150)
         assert bridge.selection == [0], ('click',bridge.selection)
-        QTest.mousePress(window,Qt.LeftButton,Qt.NoModifier,QPoint(110,240))
-        for y in range(240,449,12):
-            QTest.mouseMove(window,QPoint(110,y),20)
-        QTest.mouseRelease(window,Qt.LeftButton,Qt.NoModifier,QPoint(110,448))
+        first=item('thumbnailPaper0');second=item('thumbnailPaper1')
+        start=first.mapToScene(first.boundingRect().center()).toPoint()
+        # Drop below the target cell's midpoint, independent of header height.
+        end=second.mapToScene(second.boundingRect().center()).toPoint()+QPoint(0,45)
+        QTest.mousePress(window,Qt.LeftButton,Qt.NoModifier,start)
+        for step in range(1,21):
+            point=start+(end-start)*step/20
+            QTest.mouseMove(window,point,20)
+        QTest.mouseRelease(window,Qt.LeftButton,Qt.NoModifier,end)
         until(lambda:bridge.document['dirty'] and not bridge.busy)
         dragged=[]
         bridge.command('objects',{'page':0},dragged.append)
@@ -111,13 +116,16 @@ def main():
         bridge.inspectOcr()
         if 'eng' in bridge.languages:
             bridge.selectPage(3,False,False)
+            window.goPage(3)
+            until(lambda:bridge.currentPage==3 and not bridge.busy and not window.property('restoring'))
             bridge.startOcr('current','eng')
+            assert bridge.ocrBusy, 'OCR did not start'
             until(lambda:not bridge.ocrBusy,timeout=60)
             ocr_saved=output/'ui-ocr.pdf'
             done=[];bridge.command('save',{'path':str(ocr_saved)},done.append)
             until(lambda:bool(done))
             with fitz.open(ocr_saved) as doc:
-                assert 'SCANNED ARCHIVE' in doc[3].get_text()
+                assert 'SCANNED ARCHIVE' in doc[3].get_text(), (errors,bridge.currentPage,repr(doc[3].get_text()))
             bridge.startOcr('all','eng')
             bridge.cancelOcr()
             until(lambda:not bridge.ocrBusy,timeout=20)

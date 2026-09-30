@@ -5,7 +5,7 @@ import QtQuick.Controls.Basic as B
 import "../.."
 B.Slider {
     id: control
-    implicitHeight: 28
+    implicitHeight: 32
     opacity: enabled ? 1 : .45
     background: Rectangle {
         x: control.leftPadding; y: control.topPadding + control.availableHeight / 2 - height / 2

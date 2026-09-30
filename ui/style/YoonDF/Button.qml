@@ -6,12 +6,12 @@ import QtQuick.Controls.Basic as B
 import "../.."
 B.Button {
     id: control
-    implicitHeight: 32
+    implicitHeight: 36
     leftPadding: 16; rightPadding: 16
-    font.pixelSize: 13
+    font.pixelSize: 14
     font.weight: highlighted ? Font.DemiBold : Font.Normal
     opacity: enabled ? 1 : .45
-    contentItem: Text {
+    contentItem: Text { renderType: Text.QtRendering; renderTypeQuality: Text.HighRenderTypeQuality;
         text: control.text; font: control.font; elide: Text.ElideRight
         horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter
         color: control.highlighted ? Theme.inkOnAccent : Theme.ink

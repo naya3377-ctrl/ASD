@@ -34,7 +34,7 @@ for name in ['main.py', 'LICENSE', 'README.md', 'THIRD_PARTY_NOTICES.md']:
 source = payload / 'source'
 shutil.copytree(root, source, dirs_exist_ok=True, ignore=shutil.ignore_patterns(
     '__pycache__', '*.pyc', '.venv', '.build-venv', 'build', 'dist',
-    'test-output', 'tessdata', '.git'))
+    'test-output', 'tessdata', '.git', '.pytest_cache'))
 licenses = payload / 'licenses'
 licenses.mkdir(exist_ok=True)
 for p in (downloads / 'licenses').glob('*'):

@@ -405,7 +405,7 @@ class Bridge(QObject):
             self.imagesChanged.emit()
             self._request_outline()
         self._page = min(max(0, self._page), state["count"]-1)
-        self._selection = [x for x in self._selection if x < state["count"]] or [self._page]
+        self._selection = [x for x in self._selection if 0 <= x < state["count"]]
         self.stateChanged.emit()
         self.selectionChanged.emit()
         self.requestText(self._page)
@@ -470,7 +470,7 @@ class Bridge(QObject):
                     self._busy = False
                     self.stateChanged.emit()
                 return
-            self._page, self._selection = 0, [0]
+            self._page, self._selection = 0, []
             self.update_state(state)
             self.set_status("문서를 열었어요.  " + ("편집 가능" if state["editable"] else "읽기 전용"))
             library = self.library

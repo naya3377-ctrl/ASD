@@ -4,11 +4,11 @@ import QtQuick.Controls.Basic as B
 import "../.."
 B.MenuItem {
     id: control
-    implicitHeight: 28
+    implicitHeight: 32
     leftPadding: 10; rightPadding: 10
-    font.pixelSize: 13
+    font.pixelSize: 14
     opacity: enabled ? 1 : .4
-    contentItem: Text {
+    contentItem: Text { renderType: Text.QtRendering; renderTypeQuality: Text.HighRenderTypeQuality;
         leftPadding: control.checkable ? 20 : 0
         text: control.text; font: control.font; elide: Text.ElideRight; verticalAlignment: Text.AlignVCenter
         color: control.highlighted ? Theme.inkOnAccent : Theme.ink

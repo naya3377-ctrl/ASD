@@ -5,9 +5,9 @@ import QtQuick.Controls.Basic as B
 import "../.."
 B.TextField {
     id: control
-    implicitHeight: 32
+    implicitHeight: 36
     leftPadding: 10; rightPadding: 10
-    font.pixelSize: 13
+    font.pixelSize: 14
     color: Theme.ink
     placeholderTextColor: Theme.inkMuted
     selectionColor: Theme.selection; selectedTextColor: Theme.ink

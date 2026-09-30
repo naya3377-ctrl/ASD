@@ -140,7 +140,7 @@ Popup {
                 anchors.fill: parent; anchors.margins: 20; spacing: 12
                 RowLayout {
                     Layout.fillWidth: true
-                    Text { text: "인쇄"; font.pixelSize: 20; font.weight: Font.DemiBold; color: Theme.ink; Layout.fillWidth: true }
+                    Text { renderType: Text.QtRendering; renderTypeQuality: Text.HighRenderTypeQuality; text: "인쇄"; font.pixelSize: 20; font.weight: Font.DemiBold; color: Theme.ink; Layout.fillWidth: true }
                     ActionButton { glyph: "close"; compact: true; hint: "닫기 · Esc"; onClicked: preview.close() }
                 }
                 ScrollView {
@@ -148,7 +148,7 @@ Popup {
                     Layout.fillWidth: true; Layout.fillHeight: true; clip: true; contentWidth: availableWidth
                     ColumnLayout {
                         width: settingsScroll.availableWidth; spacing: 14
-                        component Label: Text { font.pixelSize: 12; font.weight: Font.DemiBold; color: Theme.inkSoft }
+                        component Label: Text { renderType: Text.QtRendering; renderTypeQuality: Text.HighRenderTypeQuality; font.pixelSize: 13; font.weight: Font.DemiBold; color: Theme.inkSoft }
 
                         ColumnLayout {
                             Layout.fillWidth: true; spacing: 6
@@ -226,8 +226,8 @@ Popup {
                                 onActivated: preview.duplex = currentValue
                             }
                         }
-                        Text {
-                            Layout.fillWidth: true; wrapMode: Text.WordWrap; font.pixelSize: 12; color: Theme.accentInk
+                        Text { renderType: Text.QtRendering; renderTypeQuality: Text.HighRenderTypeQuality;
+                            Layout.fillWidth: true; wrapMode: Text.WordWrap; font.pixelSize: 13; color: Theme.accentInk
                             text: "프린터 전용 설정(용지함, 품질 등)이 필요하면"
                         }
                         ActionButton {
@@ -237,12 +237,12 @@ Popup {
                         }
                     }
                 }
-                Text {
+                Text { renderType: Text.QtRendering; renderTypeQuality: Text.HighRenderTypeQuality;
                     objectName: "printError"; visible: !!preview.layout.error; Layout.fillWidth: true; wrapMode: Text.WordWrap
-                    text: preview.layout.error || ""; color: Theme.danger; font.pixelSize: 12
+                    text: preview.layout.error || ""; color: Theme.danger; font.pixelSize: 13
                 }
-                Text {
-                    objectName: "printSummary"; Layout.fillWidth: true; font.pixelSize: 12; color: Theme.inkMuted
+                Text { renderType: Text.QtRendering; renderTypeQuality: Text.HighRenderTypeQuality;
+                    objectName: "printSummary"; Layout.fillWidth: true; font.pixelSize: 13; color: Theme.inkMuted
                     text: preview.sheets.length ? ("용지 " + preview.sheets.length + "장" + (preview.copies > 1 ? " × " + preview.copies + "부" : "") + (preview.gray ? " · 흑백" : "") + (preview.duplex !== "none" ? " · 양면" : "")) : ""
                 }
                 RowLayout {
@@ -263,10 +263,10 @@ Popup {
             Layout.fillWidth: true; Layout.fillHeight: true; spacing: 0
             RowLayout {
                 Layout.fillWidth: true; Layout.margins: 14; spacing: 6
-                Text { text: "미리보기"; font.pixelSize: 14; font.weight: Font.DemiBold; color: Theme.ink }
-                Text {
+                Text { renderType: Text.QtRendering; renderTypeQuality: Text.HighRenderTypeQuality; text: "미리보기"; font.pixelSize: 14; font.weight: Font.DemiBold; color: Theme.ink }
+                Text { renderType: Text.QtRendering; renderTypeQuality: Text.HighRenderTypeQuality;
                     text: preview.currentSheet ? "· " + (preview.currentSheet.page+1) + "쪽" + (preview.currentSheet.rotate ? " (돌려서 인쇄)" : "") : ""
-                    font.pixelSize: 13; color: Theme.inkMuted
+                    font.pixelSize: 14; color: Theme.inkMuted
                 }
                 Item { Layout.fillWidth: true }
                 Segmented {
@@ -294,7 +294,7 @@ Popup {
                     scale: Math.max(.05, Math.min((sheetArea.width-48)/sheetArea.paper[0], (sheetArea.height-40)/sheetArea.paper[1]))
                     showArea: true
                 }
-                Text { visible: !preview.sheets.length; anchors.centerIn: parent; text: preview.layout.error ? "페이지 범위를 확인해 주세요." : "인쇄할 페이지가 없어요."; color: Theme.inkMuted; font.pixelSize: 14 }
+                Text { renderType: Text.QtRendering; renderTypeQuality: Text.HighRenderTypeQuality; visible: !preview.sheets.length; anchors.centerIn: parent; text: preview.layout.error ? "페이지 범위를 확인해 주세요." : "인쇄할 페이지가 없어요."; color: Theme.inkMuted; font.pixelSize: 14 }
             }
             ListView {
                 id: strip; objectName: "printStrip"
@@ -317,7 +317,7 @@ Popup {
                         scale: 92/Math.max(stripCell.paper[0], stripCell.paper[1])
                         entry: stripCell.index < preview.sheets.length ? preview.sheets[stripCell.index] : null
                     }
-                    Text { anchors.horizontalCenter: parent.horizontalCenter; anchors.bottom: parent.bottom; anchors.bottomMargin: 4; text: stripCell.index < preview.sheets.length ? (preview.sheets[stripCell.index].page+1) : ""; font.pixelSize: 11; color: stripCell.index === preview.current ? Theme.accentInk : Theme.inkMuted }
+                    Text { renderType: Text.QtRendering; renderTypeQuality: Text.HighRenderTypeQuality; anchors.horizontalCenter: parent.horizontalCenter; anchors.bottom: parent.bottom; anchors.bottomMargin: 4; text: stripCell.index < preview.sheets.length ? (preview.sheets[stripCell.index].page+1) : ""; font.pixelSize: 12; color: stripCell.index === preview.current ? Theme.accentInk : Theme.inkMuted }
                     MouseArea { id: thumbMouse; anchors.fill: parent; hoverEnabled: true; onClicked: { preview.current = stripCell.index; sheetArea.forceActiveFocus(); } }
                 }
             }

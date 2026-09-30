@@ -52,3 +52,10 @@ search path is configured for the application. A separate AGPL-3.0-or-later host
 (packaging/python_host.c) invokes CPython inside runtime/YoonDF.exe; it does not
 patch Python binaries. The application can be modified in place without a signing
 key. This alpha installer is not code-signed.
+
+## Pretendard 1.3.9
+
+Copyright (c) 2021, Kil Hyung-jin. Licensed under the SIL Open Font License 1.1.
+Unmodified static Regular, Medium, SemiBold and Bold TTF files are bundled for application UI.
+Upstream: https://github.com/orioncactus/pretendard
+Full license: assets/fonts/Pretendard/LICENSE.txt
