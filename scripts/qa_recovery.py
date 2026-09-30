@@ -27,7 +27,7 @@ def main():
     pix.set_rect(pix.irect,(40,80,120,160));pix.save(png)
     from tests.test_inline_fonts import subset_fixture
     subset_fixture(source,multi=True)
-    QQuickStyle.setStyle('Basic');app=QApplication([])
+    QQuickStyle.setStyle(os.environ.get('YOONDF_QA_STYLE','Basic'));app=QApplication([])
     QFontDatabase.addApplicationFontFromData(QByteArray(fitz.Font('korea').buffer))
     warnings=[]
     def log(kind,context,message):
@@ -119,7 +119,8 @@ def main():
         click('continueEditing');assert b.liveEditor.doc.toPlainText()==expected
         window.close();wait(lambda:item('draftCloseDialog').property('visible'))
         with patch.object(QMessageBox,'question',return_value=QMessageBox.Save):
-            click('applyDraftClose');wait(lambda:len(documents.tabs)==1 and ready())
+            click('applyDraftClose');wait(lambda:item('closeChoiceDialog').property('visible'))
+            click('closeThisTab');wait(lambda:len(documents.tabs)==1 and ready())
         assert window.isVisible()
         with fitz.open(source) as saved:assert '마지막' in saved[0].get_text()
         # The remaining tab is still a clean original. Closing during a stalled

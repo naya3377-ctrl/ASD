@@ -19,7 +19,7 @@ def main():
     from PySide6.QtTest import QTest
     from bichaek.bridge import Images,Bridge
     root=Path(__file__).resolve().parent.parent;out=root/'test-output';out.mkdir(exist_ok=True)
-    QQuickStyle.setStyle('Basic');app=QApplication([])
+    QQuickStyle.setStyle(os.environ.get('YOONDF_QA_STYLE','Basic'));app=QApplication([])
     QFontDatabase.addApplicationFontFromData(QByteArray(fitz.Font('korea').buffer))
     images=Images();bridge=Bridge(images);saved_auto=bridge.automaticOcr;bridge.setAutomaticOcr(False)
     errors=[];bridge.showError.connect(errors.append)

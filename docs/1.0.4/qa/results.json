@@ -1,0 +1,146 @@
+{
+  "version": "1.0.4",
+  "unit_integration_passed": 94,
+  "ui_suites_passed": 21,
+  "ui_suites_skipped": 0,
+  "platform": "Linux offscreen/software, Qt 6.8.3",
+  "control_style": "YoonDF",
+  "results": [
+    {
+      "script": "qa_annotations.py",
+      "exit": 0,
+      "seconds": 8.51,
+      "skipped": false
+    },
+    {
+      "script": "qa_close_ocr.py",
+      "exit": 0,
+      "seconds": 4.24,
+      "skipped": false
+    },
+    {
+      "script": "qa_comments.py",
+      "exit": 0,
+      "seconds": 4.73,
+      "skipped": false
+    },
+    {
+      "script": "qa_direct_editing.py",
+      "exit": 0,
+      "seconds": 11.82,
+      "skipped": false
+    },
+    {
+      "script": "qa_edit_performance.py",
+      "exit": 0,
+      "seconds": null,
+      "skipped": false,
+      "initial_attempt": {
+        "exit": 1,
+        "seconds": 116.06
+      },
+      "rerun": "passed after correction; see log"
+    },
+    {
+      "script": "qa_edit_tools.py",
+      "exit": 0,
+      "seconds": 7.19,
+      "skipped": false
+    },
+    {
+      "script": "qa_editor_release.py",
+      "exit": 0,
+      "seconds": 16.37,
+      "skipped": false
+    },
+    {
+      "script": "qa_external_open.py",
+      "exit": 0,
+      "seconds": 7.45,
+      "skipped": false
+    },
+    {
+      "script": "qa_font_editing.py",
+      "exit": 0,
+      "seconds": 8.14,
+      "skipped": false
+    },
+    {
+      "script": "qa_polish.py",
+      "exit": 0,
+      "seconds": 4.84,
+      "skipped": false
+    },
+    {
+      "script": "qa_presentation.py",
+      "exit": 0,
+      "seconds": 13.66,
+      "skipped": false
+    },
+    {
+      "script": "qa_print_preview.py",
+      "exit": 0,
+      "seconds": 6.01,
+      "skipped": false
+    },
+    {
+      "script": "qa_reader.py",
+      "exit": 0,
+      "seconds": 8.81,
+      "skipped": false
+    },
+    {
+      "script": "qa_reading_modes.py",
+      "exit": 0,
+      "seconds": 5.69,
+      "skipped": false
+    },
+    {
+      "script": "qa_recovery.py",
+      "exit": 0,
+      "seconds": 8.05,
+      "skipped": false
+    },
+    {
+      "script": "qa_settings.py",
+      "exit": 0,
+      "seconds": 2.63,
+      "skipped": false
+    },
+    {
+      "script": "qa_startup.py",
+      "exit": 0,
+      "seconds": 1.99,
+      "skipped": false
+    },
+    {
+      "script": "qa_tab_rename.py",
+      "exit": 0,
+      "seconds": null,
+      "skipped": false,
+      "initial_attempt": {
+        "exit": 1,
+        "seconds": 26.03
+      },
+      "rerun": "passed after correction; see log"
+    },
+    {
+      "script": "qa_tabs.py",
+      "exit": 0,
+      "seconds": 24.22,
+      "skipped": false
+    },
+    {
+      "script": "qa_ui.py",
+      "exit": 0,
+      "seconds": 8.25,
+      "skipped": false
+    },
+    {
+      "script": "qa_upgrade.py",
+      "exit": 0,
+      "seconds": 5.6,
+      "skipped": false
+    }
+  ]
+}

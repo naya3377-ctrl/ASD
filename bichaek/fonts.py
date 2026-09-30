@@ -37,14 +37,15 @@ def names_of(font):
     return family,style,full,sorted(aliases),sorted(exact)
 
 
-@lru_cache(maxsize=1)
-def installed_fonts():
+def _font_roots():
     if os.name=='nt':
-        roots=[Path(os.environ.get('WINDIR','C:/Windows'))/'Fonts',Path(os.environ.get('LOCALAPPDATA',''))/'Microsoft/Windows/Fonts']
-    else:
-        roots=[Path('/usr/share/fonts'),Path('/usr/local/share/fonts'),Path.home()/'.local/share/fonts',Path.home()/'.fonts',Path('/Library/Fonts'),Path('/System/Library/Fonts')]
+        return [Path(os.environ.get('WINDIR','C:/Windows'))/'Fonts',Path(os.environ.get('LOCALAPPDATA',''))/'Microsoft/Windows/Fonts']
+    return [Path('/usr/share/fonts'),Path('/usr/local/share/fonts'),Path.home()/'.local/share/fonts',Path.home()/'.fonts',Path('/Library/Fonts'),Path('/System/Library/Fonts')]
+
+
+def _font_paths():
     paths=set()
-    for root in roots:
+    for root in _font_roots():
         if root.is_dir():paths.update(p for p in root.rglob('*') if p.suffix.lower() in ('.ttf','.otf','.ttc','.otc') and p.is_file())
     if os.name=='nt':
         import winreg
@@ -57,19 +58,54 @@ def installed_fonts():
                             path=Path(value)
                             if path.is_absolute() and path.is_file():paths.add(path)
             except OSError:pass
-    result=[]
-    for path in sorted(paths):
+    return sorted(paths)
+
+
+def _catalog_file():
+    if os.name=='nt':base=Path(os.environ.get('LOCALAPPDATA',str(Path.home()/'AppData/Local')))/'YoonDF'
+    else:base=Path(os.environ.get('XDG_CACHE_HOME',str(Path.home()/'.cache')))/'yoondf'
+    return base/'font-catalog-v1.json'
+
+
+def _scan(path):
+    rows=[]
+    if path.suffix.lower() in ('.ttc','.otc'):
+        collection=TTCollection(path,lazy=True);faces=collection.fonts
+    else:collection=None;faces=[TTFont(path,lazy=True)]
+    try:
+        for index,font in enumerate(faces):
+            family,style,label,aliases,exact=names_of(font)
+            rows.append({'label':label,'name':label,'family':family,'style':style,'aliases':aliases,'exact':exact,
+                'key':str(path)+(f'#face={index}' if collection else '')})
+    finally:
+        if collection:collection.close()
+        else:faces[0].close()
+    return rows
+
+
+@lru_cache(maxsize=1)
+def installed_fonts():
+    """Installed faces. Parsed name tables are cached on disk per file size and
+    modification time, so each editor session no longer re-reads every font."""
+    import json
+    cache_path=_catalog_file()
+    try:cached=json.loads(cache_path.read_text(encoding='utf-8'))
+    except (OSError,ValueError):cached={}
+    if not isinstance(cached,dict):cached={}
+    fresh={};result=[]
+    for path in _font_paths():
         try:
-            if path.suffix.lower() in ('.ttc','.otc'):
-                collection=TTCollection(path,lazy=True);faces=collection.fonts
-            else:collection=None;faces=[TTFont(path,lazy=True)]
-            for index,font in enumerate(faces):
-                family,style,label,aliases,exact=names_of(font)
-                result.append({'label':label,'name':label,'family':family,'style':style,'aliases':aliases,'exact':exact,
-                    'key':str(path)+(f'#face={index}' if collection else '')})
-            if collection:collection.close()
-            else:faces[0].close()
+            stat=path.stat();stamp=f'{stat.st_size}:{stat.st_mtime_ns}'
+            entry=cached.get(str(path))
+            if isinstance(entry,dict) and entry.get('stamp')==stamp and isinstance(entry.get('rows'),list):rows=entry['rows']
+            else:rows=_scan(path)
+            fresh[str(path)]={'stamp':stamp,'rows':rows};result.extend(rows)
         except Exception:continue
+    if fresh!=cached:
+        try:
+            cache_path.parent.mkdir(parents=True,exist_ok=True)
+            temp=cache_path.with_suffix('.tmp');temp.write_text(json.dumps(fresh,ensure_ascii=False),encoding='utf-8');os.replace(temp,cache_path)
+        except OSError:pass
     return sorted(result,key=lambda r:(r['label'].casefold(),r['key']))
 
 
@@ -116,6 +152,106 @@ def _cid_glyphs(doc,xref,font):
     return out
 
 
+def _simple_codes(doc,xref,builtin):
+    """Code → glyph name for a simple font: PDF Differences over the font's own encoding."""
+    names=list(builtin)+['.notdef']*(256-len(builtin))
+    kind,value=doc.xref_get_key(xref,'Encoding')
+    diff=''
+    if kind=='dict':diff=value
+    elif kind=='xref':diff=doc.xref_get_key(int(value.split()[0]),'Differences')[1]
+    elif kind=='name' and value=='/WinAnsiEncoding':
+        for code in range(32,256):
+            try:names[code]=fitz.unicode_to_glyph_name(ord(bytes([code]).decode('cp1252')))
+            except UnicodeDecodeError:pass
+    # Differences: a start code followed by consecutive glyph names.
+    code=None
+    for token in re.findall(r'\d+|/[^\s/\[\]]+',diff):
+        if token[0]=='/':
+            if code is not None and code<256:names[code]=token[1:];code+=1
+        else:code=int(token)
+    return names
+
+
+_TYPE1_CACHE={}
+
+
+def _type1_parts(doc,xref,data):
+    """Outlines, advances and Unicode map of one embedded Type1 program."""
+    import tempfile
+    from fontTools.t1Lib import T1Font
+    from fontTools.pens.recordingPen import RecordingPen
+    from fontTools.pens.basePen import NullPen
+    kind,value=doc.xref_get_key(xref,'ToUnicode')
+    stream=doc.xref_stream(int(value.split()[0])) if kind=='xref' else b''
+    key=hashlib.sha256(data+b'\0'+stream+repr(doc.xref_get_key(xref,'Encoding')).encode()).hexdigest()
+    if key in _TYPE1_CACHE:return _TYPE1_CACHE[key]
+    if data[:2]!=b'\x80\x01' and b'cleartomark' not in data[-2048:]:
+        # PDF FontFile streams may omit the zero trailer (Length3 0); the
+        # Type1 reader needs it to find the end of the encrypted part.
+        data=data+b'\n'+(b'0'*64+b'\n')*8+b'cleartomark\n'
+    with tempfile.TemporaryDirectory() as folder:
+        path=os.path.join(folder,'font.pfb' if data[:2]==b'\x80\x01' else 'font.pfa')
+        with open(path,'wb') as handle:handle.write(data)
+        t1=T1Font(path);t1.parse();font=t1.font
+    charstrings=font['CharStrings'];glyphs={}
+    for name in charstrings.keys():
+        source=charstrings[name];source.draw(NullPen())
+        recording=RecordingPen();source.draw(recording)
+        glyphs[name]=(round(getattr(source,'width',0) or 0),recording.value)
+    encoding=font.get('Encoding');names=_simple_codes(doc,xref,encoding if isinstance(encoding,list) else [])
+    cmap={}
+    for code,cp in (_unicode_map(stream) if stream else {}).items():
+        if 0<=code<256 and names[code] in glyphs:cmap.setdefault(cp,names[code])
+    if not cmap:   # no ToUnicode: fall back to standard glyph names
+        for name in names:
+            if name in glyphs and name!='.notdef':
+                cp=fitz.glyph_name_to_unicode(name)
+                if cp>0:cmap.setdefault(cp,name)
+    matrix=font.get('FontMatrix',[0.001,0,0,0.001,0,0])
+    upem=max(16,min(16384,round(1/matrix[0]))) if matrix[0] else 1000
+    result={'glyphs':glyphs,'cmap':cmap,'upem':upem,'bbox':list(font.get('FontBBox',[0,-200,1000,800])),
+            'name':str(font.get('FontName') or 'Type1').split('+')[-1]}
+    _TYPE1_CACHE[key]=result
+    return result
+
+
+def type1_to_otf(doc,programs):
+    """Merge embedded Type1 subsets of one font into a CFF OpenType font.
+
+    Type1 subsets hold at most 256 glyphs, so producers split one face into
+    several same-named subsets and a single paragraph uses all of them. Glyph
+    names identify the same source glyph across subsets. Outlines are copied
+    unchanged; the Unicode cmap comes from each subset's ToUnicode map."""
+    from fontTools.fontBuilder import FontBuilder
+    from fontTools.pens.t2CharStringPen import T2CharStringPen
+    from fontTools.pens.boundsPen import BoundsPen
+    parts=[_type1_parts(doc,xref,data) for xref,data in programs]
+    glyphs={};cmap={}
+    for part in parts:
+        for name,value in part['glyphs'].items():glyphs.setdefault(name,value)
+        for cp,name in part['cmap'].items():cmap.setdefault(cp,name)
+    first=parts[0];order=['.notdef']+sorted(n for n in glyphs if n!='.notdef')
+    charstrings={};metrics={}
+    for name in order:
+        width,recording=glyphs.get(name,(0,[]))
+        pen=T2CharStringPen(width,None);bounds=BoundsPen(None)
+        for operator,args in recording:getattr(pen,operator)(*args);getattr(bounds,operator)(*args)
+        charstrings[name]=pen.getCharString(private=None,globalSubrs=None)
+        metrics[name]=(width,round(bounds.bounds[0]) if bounds.bounds else 0)
+    family=first['name'];ascent=round(first['bbox'][3]);descent=round(first['bbox'][1])
+    builder=FontBuilder(first['upem'],isTTF=False);builder.setupGlyphOrder(order);builder.setupCharacterMap(cmap)
+    builder.setupCFF(family,{'FullName':family},charstrings,{})
+    builder.setupHorizontalMetrics(metrics);builder.setupHorizontalHeader(ascent=ascent,descent=descent)
+    builder.setupNameTable({'familyName':family,'styleName':'Regular','fullName':family,'psName':family})
+    builder.setupOS2(sTypoAscender=ascent,sTypoDescender=descent,usWinAscent=max(0,ascent),usWinDescent=max(0,-descent))
+    builder.setupPost()
+    out=BytesIO();builder.font.save(out);return out.getvalue()
+
+
+def _is_type1(entry,data):
+    return entry[1] in ('pfa','pfb') or data[:2] in (b'%!',b'\x80\x01')
+
+
 def repair_embedded(doc,page,entry,data):
     try:
         font=TTFont(BytesIO(data),recalcTimestamp=False);cmap=(font.getBestCmap() or {}) if 'cmap' in font else {};recovered=_cid_glyphs(doc,entry[0],font)
@@ -148,8 +284,18 @@ def has_text(data,text):
 def original_font(document,page,name,text):
     key=normalized(name)
     # Embedded program is authoritative; do not pick a different installed version first.
+    type1=[]
     for entry in document[page].get_fonts(full=True):
         if normalized(entry[3])==key:
+            data=document.extract_font(entry[0])[3]
+            if data and _is_type1(entry,data):type1.append((entry[0],data))
+    if type1:
+        try:
+            data=type1_to_otf(document,type1)
+            if has_text(data,text):return data
+        except Exception:pass
+    for entry in document[page].get_fonts(full=True):
+        if normalized(entry[3])==key and entry[0] not in {x for x,_ in type1}:
             data=document.extract_font(entry[0])[3]
             if data:
                 data=repair_embedded(document,page,entry,data)
@@ -195,3 +341,28 @@ def qt_font(data):
         if record.nameID in (1,16,21):font['name'].setName(family,record.nameID,record.platformID,record.platEncID,record.langID)
     for nid in (1,16):font['name'].setName(family,nid,3,1,0x409)
     out=BytesIO();font.save(out);font.close();return out.getvalue(),family
+
+
+_PDF_NAMES={}
+
+
+def pdf_font(data):
+    """Font bytes for writing into a PDF under the font's own name.
+
+    qt_font() renames families to YoonDF_<hash> so Qt never confuses two
+    subsets; the saved PDF should still say "Pretendard-Regular"."""
+    key=hashlib.sha256(data).hexdigest()
+    if key not in _PDF_NAMES:
+        try:
+            font=TTFont(BytesIO(data),recalcTimestamp=False);names=font['name']
+            family=names.getDebugName(1) or ''
+            original=names.getDebugName(6) or names.getDebugName(4)
+            if family.startswith('YoonDF_') and original:
+                for record in list(names.names):
+                    if record.nameID in (1,16,21):names.setName(original,record.nameID,record.platformID,record.platEncID,record.langID)
+                out=BytesIO();font.save(out);data=out.getvalue()
+            font.close()
+        except Exception:
+            pass   # an unreadable name table only costs the display name
+        _PDF_NAMES[key]=data
+    return _PDF_NAMES[key]

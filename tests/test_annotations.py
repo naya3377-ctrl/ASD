@@ -162,4 +162,26 @@ class AnnotationTests(unittest.TestCase):
         with self.assertRaises(ValueError):self.doc.update_annotation(0,a['id'],'stale','A',revision=revision)
         with self.assertRaises(ValueError):self.doc.add_markup(0,'highlight',100000,100004)
 
+    def test_bubble_icon_survives_save_move_and_color_change(self):
+        self.doc.add_comment(0,[50,60],'bubble')
+        def appearance():
+            with fitz.open(str(self.root/'bubble.pdf')) as pdf:
+                a=pdf[0].first_annot
+                return a._getAP(),a.colors['stroke']
+        self.doc.save(str(self.root/'bubble.pdf'))
+        ap,_=appearance();self.assertIn(b'\nB\n',ap);self.assertIn(b'1 J',ap)
+        a=self.doc.annotations_page(0)['items'][0]
+        self.doc.move_annotation(0,a['id'],[120,160],self.doc.session,self.doc.revision)
+        a=self.doc.annotations_page(0)['items'][0]
+        self.doc.update_annotation(0,a['id'],'bubble','A',color='#007aff',revision=self.doc.revision)
+        self.doc.save(str(self.root/'bubble.pdf'))
+        ap,stroke=appearance();self.assertIn(b'1 J',ap);self.assertIn(b'0.000 0.478 1.000 rg',ap)
+
+    def test_memo_on_selected_text_is_a_highlight_note(self):
+        self.doc.add_markup(0,'highlight',0,5,author='A',content='글자에 단 메모',subject='메모')
+        item=self.doc.annotations_page(0)['items'][0]
+        self.assertEqual((item['type'],item['label'],item['content']),('Highlight','메모','글자에 단 메모'))
+        self.doc.add_markup(0,'highlight',6,10)
+        self.assertEqual(self.doc.annotations_page(0)['items'][1]['label'],'형광펜')
+
 if __name__=='__main__':unittest.main()

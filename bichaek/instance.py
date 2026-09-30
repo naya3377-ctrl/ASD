@@ -36,6 +36,14 @@ def instance_directory():
     return base / 'yoondf' / 'launch'
 
 
+class OlderReaderRunning(RuntimeError):
+    def __init__(self, version):
+        from . import __version__
+        shown = ('윤DF ' + version) if version else '이전 버전의 윤DF'
+        super().__init__(shown + ' 창이 아직 열려 있어요.\n\n새로 설치한 윤DF ' + __version__ +
+                         '을(를) 쓰려면 열려 있는 윤DF 창을 모두 저장하고 닫은 뒤 다시 실행해 주세요.')
+
+
 class ProcessLock:
     def __init__(self, directory):
         self.owned = False
@@ -130,7 +138,23 @@ class InstanceRelay:
         except (OSError, ValueError, KeyError, TypeError):
             pass  # The reader can still open the tab if Windows refuses focus.
 
+    def running_version(self):
+        """Version of the reader that owns the lock: '' if unknown, None if it
+        predates version stamps (0.9.6 and earlier wrote only the pid)."""
+        try:
+            owner = json.loads((self.directory / 'owner.json').read_text(encoding='utf-8'))
+        except (OSError, ValueError):
+            return ''
+        return owner.get('appVersion') if isinstance(owner, dict) else ''
+
     def start_or_forward(self, paths, timeout=15):
+        from . import __version__
+        if not self.lock.acquire():
+            running = self.running_version()
+            if running is None or (running and running != __version__):
+                # Handing the file to an older window would silently keep the
+                # old program on screen after an update.
+                raise OlderReaderRunning(running)
         self.allow_foreground()
         request = self.directory / ('r-' + str(time.time_ns()) + '-' + uuid.uuid4().hex + '.json')
         ack = request.with_suffix('.ack')
@@ -144,7 +168,8 @@ class InstanceRelay:
                     raise RuntimeError(result['error'])
                 return False
             if self.lock.acquire():
-                self.write_atomic(self.directory / 'owner.json', {'pid': os.getpid()})
+                from . import __version__
+                self.write_atomic(self.directory / 'owner.json', {'pid': os.getpid(), 'appVersion': __version__})
                 self._clean_receipts()
                 return True
             self.allow_foreground()

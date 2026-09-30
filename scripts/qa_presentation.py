@@ -39,7 +39,7 @@ def main():
         doc[0].insert_link({'kind':fitz.LINK_GOTO,'from':fitz.Rect(62,230,230,280),'page':7,'to':fitz.Point(0,0)})
         doc[0].insert_link({'kind':fitz.LINK_URI,'from':fitz.Rect(62,290,230,330),'uri':'https://example.com/yoondf'})
         doc.save(fixture)
-    QQuickStyle.setStyle('Basic');app=QApplication([])
+    QQuickStyle.setStyle(os.environ.get('YOONDF_QA_STYLE','Basic'));app=QApplication([])
     QFontDatabase.addApplicationFontFromData(QByteArray(fitz.Font('korea').buffer))
     warnings=[]
     def message(kind,context,text):
@@ -107,7 +107,7 @@ def main():
         assert not b.document['dirty']
         print('PASS: search field, page-number entry and comment dialog keep their own keys; modal F5 blocked',flush=True)
         # Enter/exit without advancing restores position, zoom and panel choice.
-        window.setProperty('workspaceMode','comments');window.setProperty('zoom',1.2)
+        window.setProperty('commentsOpen',True);window.setProperty('zoom',1.2)
         item('pageList').forceActiveFocus();key(Qt.Key_Home);page(0)
         pages=item('pageList');pages.setProperty('contentY',120.0);QTest.qWait(150)
         before_y=pages.property('contentY');before_page=b.currentPage
@@ -120,7 +120,7 @@ def main():
         key(Qt.Key_Tab,Qt.ControlModifier);assert documents.activeIndex==0
         key(Qt.Key_Escape);wait(settled)
         assert not window.property('presenting') and not b._presentation_active
-        assert window.property('workspaceMode')=='comments' and window.property('zoom')==1.2
+        assert window.property('commentsOpen') and window.property('zoom')==1.2
         assert window.visibility()==old_visibility and (window.width(),window.height())==old_size
         after_offset=-item('paper'+str(b.currentPage)).mapToItem(pages,QPointF(0,0)).y()/item('paper'+str(b.currentPage)).width()
         assert b.currentPage==before_page and abs(after_offset-before_offset)<.005,(before_page,b.currentPage,before_y,pages.property('contentY'),before_offset,after_offset)

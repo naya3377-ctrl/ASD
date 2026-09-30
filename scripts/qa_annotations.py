@@ -35,7 +35,7 @@ def main():
         p.insert_text((50,520),'Comments stay editable inside the PDF.',fontname="Review",fontsize=15,color=(.40,.47,.40))
         p.insert_text((50,745),'BICHAEK PDF / ANNOTATION REVIEW',fontname="Review",fontsize=10,color=(.55,.61,.53))
         doc.save(source)
-    QQuickStyle.setStyle('Basic');app=QApplication([])
+    QQuickStyle.setStyle(os.environ.get('YOONDF_QA_STYLE','Basic'));app=QApplication([])
     QFontDatabase.addApplicationFontFromData(QByteArray(fitz.Font('korea').buffer))
     warnings=[]
     def log(kind,context,message):
@@ -78,7 +78,7 @@ def main():
         wait(lambda:not b.busy and not item('annotationEditor').property('visible'))
     try:
         documents.openPaths([str(source)]);wait(lambda:b.document['count']==1 and b.imageUrl(0,'main') and b.textLayout(0)['chars'])
-        click('commentsModeButton');wait(lambda:window.property('workspaceMode')=='comments' and not b.annotationsLoading)
+        click('commentsModeButton');wait(lambda:window.property('commentsOpen') and not b.annotationsLoading)
         window.setProperty('zoom',.8);QTest.qWait(250)
         # Actual pointer selection with an active highlighter, including two lines.
         click('commentHighlightButton');layer=item('textLayer0');factor=layer.property('factor')
@@ -140,12 +140,12 @@ def main():
         b.undo();wait(lambda:not b.busy and len(b.annotations)==5)
         b.save(False);wait(lambda:not b.busy and not b.document['dirty'])
         # Click the rendered native highlight in read mode to open its comment.
-        window.setProperty('workspaceMode','read');window.setProperty('tool','read')
+        window.setProperty('workspaceMode','read');window.setProperty('tool','read');window.setProperty('commentsOpen',False)
         wait(lambda:not window.property('restoring'));QTest.qWait(200)
         layer=item('textLayer0');factor=layer.property('factor')
         p=layer.mapToScene(QPointF(120*factor,185*factor))
         QTest.mouseClick(window,Qt.LeftButton,Qt.NoModifier,p.toPoint())
-        wait(lambda:window.property('workspaceMode')=='comments' and bool(b.selectedAnnotation))
+        wait(lambda:window.property('commentsOpen') and bool(b.selectedAnnotation))
         print('PASS: independent writer PDF comments/replies, unsupported object preservation, tab isolation, delete thread/undo, click native annotation',flush=True)
         # Compact final preview without a hover tooltip; preserve review PDF.
         window.setProperty('zoom',.75);window.setProperty('tool','read');QTest.qWait(200)

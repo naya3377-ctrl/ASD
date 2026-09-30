@@ -215,3 +215,41 @@ Verify a clean and upgraded Windows installation, actual Task Manager Processes
 and Details labels, Korean IME composition, missing-glyph fallback, worker launches,
 font timeout/retry, and editing-close apply/save/discard/cancel before stable release.
 These native acceptance checks have not been performed in the Linux build workspace.
+
+
+## Editing stability (0.9.4)
+
+No dependency changes. The cross-build retains CPython 3.12.10, Qt/PySide 6.8.3,
+PyMuPDF 1.26.6 and fontTools 4.61.1. Validate `scripts/qa_edit_performance.py`
+with the existing UI regressions. It checks the attached TextArea's actual
+document width after IME events, 40-line paragraph stability, repeated save,
+and heartbeat latency. Native-fault logs use Python's built-in faulthandler.
+The current build has no Windows runner; native IME/GPU/installer acceptance
+remains outstanding. See docs/EDITING_FIXES_094.md.
+
+
+## 1.0.5 build
+
+Runtime dependencies and their pinned hashes are unchanged. Pretendard 1.3.9
+static TTFs and OFL license are under assets/fonts/Pretendard. The entire assets
+tree must be included. QML UI uses the fonts registered by bichaek/ui_fonts.py.
+
+This release uses MinGW-w64 GCC 13.2 (Ubuntu 13.2.0-6ubuntu1+26.1), binutils
+2.41.90 and NSIS 3.09. From packaging/, with PAYLOAD and OUTPUT as absolute paths:
+
+```sh
+x86_64-w64-mingw32-windres launcher.rc -O coff -o launcher.o
+x86_64-w64-mingw32-gcc -O2 -municode -mwindows -static -static-libgcc launcher.c launcher.o -lshell32 -o "$PAYLOAD/YoonDF.exe"
+x86_64-w64-mingw32-gcc -O2 -municode -mwindows -static -static-libgcc python_host.c launcher.o -lshell32 -o "$PAYLOAD/runtime/YoonDF.exe"
+makensis -DPAYLOAD="$PAYLOAD" -DOUTPUT="$OUTPUT" windows-cross.nsi
+```
+
+The earlier Zig recipe failed to spawn its linker in this build environment;
+MinGW was used instead. Both launchers import only Windows system DLLs; there
+is no additional GCC DLL requirement. Do not interpret cross-compilation,
+installer extraction or Linux QML tests as Windows execution acceptance.
+
+
+## 1.0.6
+
+Same MinGW/NSIS toolchain and pinned Windows runtime as 1.0.5. Only UI glyph rendering and release version change. Run scripts/qa_typography.py against software and RHI/OpenGL backends; software alone does not exercise distance-field rendering. GPU tests with a Python Qt message handler use QSG_RENDER_LOOP=basic to avoid cross-thread test logging deadlocks. See docs/RELEASE_1.0.6.md for platform limits.

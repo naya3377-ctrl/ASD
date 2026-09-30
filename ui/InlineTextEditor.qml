@@ -18,7 +18,7 @@ Item {
     y: (angle===180 || angle===270 ? rect[3] : rect[1])*factor
     width: live.width; height: live.height
     scale: factor; rotation: angle; transformOrigin: Item.TopLeft
-    function attach() { if(editing && live.ready) {live.attach(input.textDocument,pageNumber);input.forceActiveFocus();} }
+    function attach() { if(editing && live.ready) {live.attach(input.textDocument,pageNumber);input.bound=true;input.forceActiveFocus();} }
     onEditingChanged: if(editing) Qt.callLater(attach)
     Component.onCompleted: Qt.callLater(attach)
     Connections {
@@ -33,22 +33,36 @@ Item {
     }
     TextArea {
         id: input; objectName: editor.editing ? "replacementText" : "inactiveInlineText"+pageNumber
+        Keys.onShortcutOverride: function(event) {
+            if(event.key===Qt.Key_S && (event.modifiers & Qt.ControlModifier)) event.accepted=true;
+        }
+        Keys.onPressed: function(event) {
+            if(event.key===Qt.Key_S && (event.modifiers & Qt.ControlModifier)) {
+                event.accepted=true; editor.session.save(!!(event.modifiers & Qt.ShiftModifier));
+            }
+        }
         property bool bound: false
-        visible: editor.live.ready; enabled: !controller.busy && editor.live.ready
-        width: editor.live.width; height: Math.max(1,(editor.editData.pageHeight || 1000)-(editor.editData.rect ? editor.editData.rect[1] : 0))
-        y: editor.live.offset; padding: 0
+        visible: editor.live.ready; enabled: !controller.busy && editor.live.ready && !editor.live.loading
+        width: editor.live.width
+        // Only as tall as the text: clicks below it belong to the page and commit the edit.
+        height: Math.max(1,editor.live.height-Math.max(0,editor.live.offset))
+        // Basic.TextArea adds padding + 4 on the left even when padding is 0.
+        // Keep Qt's live document width equal to the PDF editing width on input.
+        y: editor.live.offset; padding: 0; leftPadding: 0; rightPadding: 0
+        topPadding: 0; bottomPadding: 0; textMargin: 0
         background: Item { }
         renderType: Text.NativeRendering
         textFormat: TextEdit.RichText; wrapMode: TextEdit.Wrap; selectByMouse: true; clip: false
         persistentSelection: true
+        onInputMethodComposingChanged: if(editor.editing) editor.live.setComposing(inputMethodComposing)
         onTextChanged: if(editor.editing && bound) session.text=getText(0,length)
         Connections { target: editor.session; function onVisibleChanged(){input.bound=false;if(editor.editing)Qt.callLater(editor.attach);} }
     }
-    Rectangle { anchors.fill: parent; color: "transparent"; border.color: live.ready ? "#377e62" : "#bc8746"; border.width: 1.5/editor.factor }
+    Rectangle { anchors.fill: parent; color: "transparent"; border.color: live.ready ? Theme.accent : "#bc8746"; border.width: 1.5/editor.factor }
     Rectangle {
         visible: live.ready; width: 8/editor.factor; height: 22/editor.factor
         x: parent.width-width/2; y: parent.height/2-height/2
-        color: "white"; border.color: "#377e62"; border.width: 1/editor.factor
+        color: "white"; border.color: Theme.accent; border.width: 1/editor.factor
         MouseArea {
             anchors.fill: parent; anchors.margins: -4/editor.factor; cursorShape: Qt.SizeHorCursor; preventStealing: true
             property point start; property real oldWidth

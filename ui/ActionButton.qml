@@ -7,30 +7,49 @@ Button {
     property bool primary: false
     property bool outlined: false
     property bool leftAligned: false
+    property bool compact: false
+    property bool segmented: false   // inside a Segmented strip: active is a white pill
     property string glyph: ""
     property string hint: ""
-    implicitHeight: 36
-    implicitWidth: contentItem.implicitWidth + (text.length ? 24 : 18)
-    leftPadding: 12; rightPadding: 12
-    font.pixelSize: 13
+    property string shortcutText: ""
+    implicitHeight: compact ? 34 : 38
+    implicitWidth: Math.max(implicitHeight, contentItem.implicitWidth + (text.length ? 24 : 16))
+    leftPadding: text.length ? 12 : 8; rightPadding: text.length ? 12 : 8
+    font.pixelSize: 14
     font.weight: primary || active ? Font.DemiBold : Font.Normal
     hoverEnabled: true
-    opacity: enabled ? 1 : .4
+    focusPolicy: Qt.TabFocus
+    opacity: enabled ? 1 : .38
+    readonly property color tone: primary ? Theme.inkOnAccent : active && !segmented ? Theme.iconActive : Theme.icon
     contentItem: Item {
         implicitWidth: contentRow.implicitWidth; implicitHeight: 20
         Row {
             id: contentRow; spacing: 7; anchors.verticalCenter: parent.verticalCenter
             x: control.leftAligned ? 0 : (parent.width-width)/2
-            Image { visible: control.glyph.length>0; width: visible ? 18 : 0; height: 18; anchors.verticalCenter: parent.verticalCenter; source: visible ? "../assets/icons/"+control.glyph+".svg" : ""; smooth: true }
-            Text { visible: control.text.length>0; text: control.text; font: control.font; color: control.primary ? "#ffffff" : control.active ? "#234d42" : "#465358"; anchors.verticalCenter: parent.verticalCenter }
+            Icon { name: control.glyph; tone: control.tone; anchors.verticalCenter: parent.verticalCenter; size: control.glyph.length ? 18 : 0 }
+            Text { renderType: Text.QtRendering; renderTypeQuality: Text.HighRenderTypeQuality;
+                visible: control.text.length>0; text: control.text; font: control.font
+                color: control.primary ? Theme.inkOnAccent : control.active ? (control.segmented ? Theme.ink : Theme.accentInk) : Theme.inkSoft
+                anchors.verticalCenter: parent.verticalCenter
+            }
+            Text { renderType: Text.QtRendering; renderTypeQuality: Text.HighRenderTypeQuality;
+                visible: control.shortcutText.length>0 && control.leftAligned; text: control.shortcutText
+                font.pixelSize: 12; color: Theme.inkMuted; anchors.verticalCenter: parent.verticalCenter
+            }
         }
     }
     background: Rectangle {
-        radius: 7
-        color: control.primary ? (control.down ? "#183b32" : control.hovered ? "#346454" : "#284f43") : control.down ? "#e3e8e6" : control.active ? "#e7efeb" : control.hovered ? "#edf0ee" : control.outlined ? "#ffffff" : "transparent"
-        border.width: control.outlined ? 1 : 0
-        border.color: "#dce2df"
+        scale: control.down ? .97 : 1
+        Behavior on scale { NumberAnimation { duration: Theme.motionFast; easing.type: Easing.OutCubic } }
+        radius: Theme.radius
+        color: control.primary ? (control.down ? Theme.accentPressed : control.hovered ? Theme.accentHover : Theme.accent)
+             : control.segmented ? (control.active ? Theme.raised : control.down ? Theme.pressed : control.hovered ? Theme.hover : "transparent")
+             : control.down ? Theme.pressed : control.active ? Theme.accentSoft : control.hovered ? Theme.hover
+             : control.outlined ? Theme.raised : "transparent"
+        border.width: control.outlined || control.visualFocus || (control.segmented && control.active) ? 1 : 0
+        border.color: control.visualFocus ? Theme.focusRing : control.segmented ? Theme.line : Theme.lineStrong
+        Behavior on color { ColorAnimation { duration: Theme.motionFast; easing.type: Easing.OutCubic } }
     }
     ToolTip.visible: hovered && hint.length>0
-    ToolTip.text: hint; ToolTip.delay: 600
+    ToolTip.text: hint; ToolTip.delay: 550
 }

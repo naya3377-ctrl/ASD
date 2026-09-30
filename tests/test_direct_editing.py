@@ -54,6 +54,27 @@ class DirectEditingTests(unittest.TestCase):
         self.transform(first,[200,400,400,500])
         self.close_rect(self.doc.movable_images(1)[0]['rect'],second['rect'])
         self.assertEqual(len(self.doc.pdf[0].get_image_info()),1)
+    def test_delete_image_undo_save_and_other_pages_keep_theirs(self):
+        # New (legacy stream) image, a moved (form) image, and a shared copy on another page.
+        self.doc.add_image(0,[80,150,280,250],str(self.png))
+        self.doc.add_image(0,[80,400,280,500],str(self.png))
+        moved=next(i for i in self.doc.movable_images(0) if i['rect'][1]>300)
+        self.transform(moved,[100,420,300,520])
+        self.doc.pdf.fullcopy_page(0,to=1)   # separate page sharing image resources
+        items=self.doc.movable_images(0);self.assertEqual(len(items),2)
+        for item in items:
+            item=next(i for i in self.doc.movable_images(0) if i['rect']==item['rect'])
+            self.doc.delete_image(0,item['id'],item['session'],item['revision'])
+        self.assertEqual(self.doc.movable_images(0),[])
+        self.assertEqual(len(self.doc.pdf[0].get_image_info()),0)
+        self.assertEqual(len(self.doc.pdf[1].get_image_info()),2)
+        self.doc.undo();self.assertEqual(len(self.doc.movable_images(0)),1)
+        self.doc.redo();self.assertEqual(self.doc.movable_images(0),[])
+        saved=self.root/'deleted.pdf';self.doc.save(str(saved));self.doc.open(str(saved))
+        self.assertEqual(len(self.doc.pdf[0].get_image_info()),0)
+        self.assertIn('PAGE 1',self.doc.pdf[0].get_text())
+        item=self.doc.movable_images(1)[0]
+        with self.assertRaises(ValueError):self.doc.delete_image(1,item['id'],item['session'],item['revision']-1)
     def test_cropbox_image_move(self):
         p=self.doc.pdf[0];p.set_cropbox(fitz.Rect(20,30,580,770))
         self.doc.add_image(0,[100,150,300,250],str(self.png))

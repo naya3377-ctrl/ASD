@@ -31,7 +31,7 @@ def main():
                 if i==80:page.insert_text((80,700),'Another Needle in the same page',fontsize=18)
         doc.save(fixture)
     second=out/'Design Notes.pdf';shutil.copy2(root/'samples/sample.pdf',second)
-    QQuickStyle.setStyle('Basic');app=QApplication([])
+    QQuickStyle.setStyle(os.environ.get('YOONDF_QA_STYLE','Basic'));app=QApplication([])
     QFontDatabase.addApplicationFontFromData(QByteArray(fitz.Font('korea').buffer))
     warnings=[]
     def qt_message(kind,context,message):
@@ -140,7 +140,8 @@ def main():
         assert all(not x._render_queue for x in documents._tabs if not x.active)
         click('openDocumentsButton')
         assert item('openDocumentsMenu').property('visible')
-        assert item('openDocumentsMenu').property('count')==20, item('openDocumentsMenu').property('count')
+        # 20 documents, a separator and "close all tabs".
+        assert item('openDocumentsMenu').property('count')==22, item('openDocumentsMenu').property('count')
         QTest.keyClick(window,Qt.Key_Escape);QTest.qWait(100)
         for i in [0,19,1,17,0,5,0]:documents.activate(i)
         wait(lambda:settled() and documents.activeBridge is first)

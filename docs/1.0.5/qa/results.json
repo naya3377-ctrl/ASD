@@ -1,0 +1,130 @@
+[
+  {
+    "script": "qa_annotations.py",
+    "exit": 0,
+    "seconds": 6.53,
+    "skipped": false
+  },
+  {
+    "script": "qa_close_ocr.py",
+    "exit": 0,
+    "seconds": 2.62,
+    "skipped": false
+  },
+  {
+    "script": "qa_comments.py",
+    "exit": 0,
+    "seconds": 3.22,
+    "skipped": false
+  },
+  {
+    "script": "qa_direct_editing.py",
+    "exit": 0,
+    "seconds": 8.54,
+    "skipped": false
+  },
+  {
+    "script": "qa_edit_performance.py",
+    "exit": 0,
+    "seconds": 46.22,
+    "skipped": false
+  },
+  {
+    "script": "qa_edit_tools.py",
+    "exit": 0,
+    "seconds": 4.47,
+    "skipped": false
+  },
+  {
+    "script": "qa_editor_release.py",
+    "exit": 0,
+    "seconds": 12.04,
+    "skipped": false
+  },
+  {
+    "script": "qa_external_open.py",
+    "exit": 0,
+    "seconds": 5.23,
+    "skipped": false
+  },
+  {
+    "script": "qa_font_editing.py",
+    "exit": 0,
+    "seconds": 4.94,
+    "skipped": false
+  },
+  {
+    "script": "qa_polish.py",
+    "exit": 0,
+    "seconds": 3.17,
+    "skipped": false
+  },
+  {
+    "script": "qa_presentation.py",
+    "exit": 0,
+    "seconds": 10.79,
+    "skipped": false
+  },
+  {
+    "script": "qa_print_preview.py",
+    "exit": 0,
+    "seconds": 2.72,
+    "skipped": false
+  },
+  {
+    "script": "qa_reader.py",
+    "exit": 0,
+    "seconds": 5.33,
+    "skipped": false
+  },
+  {
+    "script": "qa_reading_modes.py",
+    "exit": 0,
+    "seconds": 3.47,
+    "skipped": false
+  },
+  {
+    "script": "qa_recovery.py",
+    "exit": 0,
+    "seconds": 4.79,
+    "skipped": false
+  },
+  {
+    "script": "qa_settings.py",
+    "exit": 0,
+    "seconds": 1.37,
+    "skipped": false
+  },
+  {
+    "script": "qa_startup.py",
+    "exit": 0,
+    "seconds": 0.82,
+    "skipped": false
+  },
+  {
+    "script": "qa_tab_rename.py",
+    "exit": 0,
+    "seconds": 8.14,
+    "skipped": false
+  },
+  {
+    "script": "qa_tabs.py",
+    "exit": 0,
+    "seconds": 19.66,
+    "skipped": false
+  },
+  {
+    "script": "qa_ui.py",
+    "exit": 0,
+    "seconds": null,
+    "skipped": false,
+    "initial_exit": 1,
+    "rerun": "Coordinate-independent thumbnail drag; awaited current-page navigation; ran from project root, as production launcher does."
+  },
+  {
+    "script": "qa_upgrade.py",
+    "exit": 0,
+    "seconds": 2.98,
+    "skipped": false
+  }
+]

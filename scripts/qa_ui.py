@@ -21,7 +21,7 @@ def main():
     import fitz
     root=Path(__file__).resolve().parent.parent
     output=root/"test-output";output.mkdir(exist_ok=True)
-    QQuickStyle.setStyle("Basic")
+    QQuickStyle.setStyle(os.environ.get("YOONDF_QA_STYLE","Basic"))
     app=QApplication([])
     QFontDatabase.addApplicationFontFromData(QByteArray(fitz.Font("korea").buffer))
     images=Images();bridge=Bridge(images)
@@ -41,6 +41,13 @@ def main():
             app.processEvents();QTest.qWait(30)
             if time.monotonic()-start>timeout:raise AssertionError("Timed out: "+str(errors))
         app.processEvents();QTest.qWait(100)
+    def item(name):
+        # Page delegates have no QObject parent, so walk the visual tree.
+        pending=[window.contentItem()]
+        while pending:
+            node=pending.pop()
+            if node.objectName()==name:return node
+            pending.extend(node.childItems())
     def click(name):
         item=window.findChild(QObject,name)
         assert item,name
@@ -56,10 +63,18 @@ def main():
         QTest.mouseClick(window,Qt.LeftButton,Qt.ControlModifier,QPoint(110,430))
         app.processEvents();QTest.qWait(150)
         assert bridge.selection == [0,1], ('Ctrl+click',bridge.selection)
-        QTest.mousePress(window,Qt.LeftButton,Qt.NoModifier,QPoint(110,240))
-        for y in range(240,449,12):
-            QTest.mouseMove(window,QPoint(110,y),20)
-        QTest.mouseRelease(window,Qt.LeftButton,Qt.NoModifier,QPoint(110,448))
+        # A plain click narrows to one page; dragging a multi-selection moves them all.
+        QTest.mouseClick(window,Qt.LeftButton,Qt.NoModifier,QPoint(110,240));app.processEvents();QTest.qWait(150)
+        assert bridge.selection == [0], ('click',bridge.selection)
+        first=item('thumbnailPaper0');second=item('thumbnailPaper1')
+        start=first.mapToScene(first.boundingRect().center()).toPoint()
+        # Drop below the target cell's midpoint, independent of header height.
+        end=second.mapToScene(second.boundingRect().center()).toPoint()+QPoint(0,45)
+        QTest.mousePress(window,Qt.LeftButton,Qt.NoModifier,start)
+        for step in range(1,21):
+            point=start+(end-start)*step/20
+            QTest.mouseMove(window,point,20)
+        QTest.mouseRelease(window,Qt.LeftButton,Qt.NoModifier,end)
         until(lambda:bridge.document['dirty'] and not bridge.busy)
         dragged=[]
         bridge.command('objects',{'page':0},dragged.append)
@@ -72,20 +87,22 @@ def main():
         until(lambda:len(bridge.blocks)>0)
         window.grabWindow().save(str(output/"text-blocks.png"))
         b=next(b for b in bridge.blocks if b["text"].startswith("A document"))
-        bridge.editBlock(b);QTest.qWait(200)
+        bridge.editBlock(b);until(lambda:item("replacementText") is not None and not bridge.liveEditor.loading)
         window.grabWindow().save(str(output/"text-editor.png"))
-        editor=window.findChild(QObject,"replacementText")
-        editor.setProperty("text","Edited document")
-        window.findChild(QObject,"fontSizeInput").setProperty("text","30")
+        editor=item("replacementText")
+        # Type like a person: select all, type, let fonts for new letters arrive, then apply.
+        editor.forceActiveFocus();QTest.keyClick(window,Qt.Key_A,Qt.ControlModifier)
+        for ch in "Edited document": QTest.keyClick(window,ch)
+        until(lambda:bridge.liveEditor.canApply)
         click("applyTextButton")
         until(lambda:not bridge.busy and bridge.document["dirty"])
         until(lambda:bool(bridge.imageUrl(0,"main")))
         saved=output/"ui-edited.pdf"
         done=[]
         bridge.command("save",{"path":str(saved)},done.append)
-        until(lambda:bool(done))
+        until(lambda:bool(done));bridge.update_state(done[0])
         with fitz.open(saved) as doc:
-            assert "Edited document" in doc[0].get_text()
+            assert "Edited document" in " ".join(doc[0].get_text().split()), doc[0].get_text()[-200:]
             assert "A document" not in doc[0].get_text()
         bridge.search("Edited document")
         until(lambda:not bridge.searching)
@@ -99,13 +116,16 @@ def main():
         bridge.inspectOcr()
         if 'eng' in bridge.languages:
             bridge.selectPage(3,False,False)
+            window.goPage(3)
+            until(lambda:bridge.currentPage==3 and not bridge.busy and not window.property('restoring'))
             bridge.startOcr('current','eng')
+            assert bridge.ocrBusy, 'OCR did not start'
             until(lambda:not bridge.ocrBusy,timeout=60)
             ocr_saved=output/'ui-ocr.pdf'
             done=[];bridge.command('save',{'path':str(ocr_saved)},done.append)
             until(lambda:bool(done))
             with fitz.open(ocr_saved) as doc:
-                assert 'SCANNED ARCHIVE' in doc[3].get_text()
+                assert 'SCANNED ARCHIVE' in doc[3].get_text(), (errors,bridge.currentPage,repr(doc[3].get_text()))
             bridge.startOcr('all','eng')
             bridge.cancelOcr()
             until(lambda:not bridge.ocrBusy,timeout=20)

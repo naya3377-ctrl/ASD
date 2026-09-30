@@ -19,9 +19,17 @@ Item {
     width: Math.max(8,(editData.mode==="replace" ? editData.rect[2]-editData.rect[0] : rect[2]-rect[0])*factor)
     height: Math.max(8,session.areaHeight*factor)
     rotation: angle; transformOrigin: Item.TopLeft
-    Rectangle { anchors.fill: parent; color: "white"; border.color: "#377e62"; border.width: 2 }
+    Rectangle { anchors.fill: parent; color: "white"; border.color: Theme.accent; border.width: 2 }
     TextArea {
         id: input; objectName: editor.editing ? "replacementText" : "inactiveInlineText"+pageNumber
+        Keys.onShortcutOverride: function(event) {
+            if(event.key===Qt.Key_S && (event.modifiers & Qt.ControlModifier)) event.accepted=true;
+        }
+        Keys.onPressed: function(event) {
+            if(event.key===Qt.Key_S && (event.modifiers & Qt.ControlModifier)) {
+                event.accepted=true; editor.session.save(!!(event.modifiers & Qt.ShiftModifier));
+            }
+        }
         anchors.fill: parent; padding: 0; leftPadding: 1; rightPadding: 1
         background: Item { }
         text: editor.editing ? session.text : ""

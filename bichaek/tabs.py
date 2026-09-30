@@ -5,6 +5,7 @@ from pathlib import Path
 import multiprocessing as mp
 import os
 import queue
+import time
 
 from PySide6.QtCore import QObject, Property, Signal, Slot, QTimer, QUrl, QAbstractListModel, QModelIndex, Qt
 from PySide6.QtWidgets import QFileDialog, QMessageBox
@@ -27,11 +28,17 @@ class EngineHub(QObject):
         self.retired = []
         self.callbacks = {}
         self.serial = 0
+        self.failed = False
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.poll)
         self.timer.start(20)
 
     def command(self, owner, op, args=None, callback=None, priority=0, guarded=False, error_callback=None):
+        if self.failed:
+            if op not in ('close_document','quit'):
+                message='PDF 처리기가 종료됐어요. 입력 중인 글을 복사해 보관한 뒤 윤DF를 다시 열어 주세요.'
+                QTimer.singleShot(0,lambda:(error_callback or owner.failure)(message) if not owner.closed else None)
+            return
         self.serial += 1
         self.callbacks[self.serial] = (owner, callback, error_callback)
         msg = {"id": self.serial, "document": owner.document_id, "op": op,
@@ -40,9 +47,12 @@ class EngineHub(QObject):
         self.inbox.put(msg)
 
     def poll(self):
+        # A time budget keeps each tick short; the rest waits for the next one.
+        deadline = time.monotonic() + .008
         for _ in range(60):
+            if time.monotonic() > deadline: break
             try: msg = self.outbox.get_nowait()
-            except queue.Empty: break
+            except (queue.Empty, EOFError, OSError): break
             owner, success, error = self.callbacks.pop(msg["id"], (None, None, None))
             if owner is None: continue
             # Callbacks still run for a closed tab so outstanding shared frames
@@ -55,6 +65,20 @@ class EngineHub(QObject):
             if not owner.closed:
                 owner.poll_ocr()
                 owner.poll_merge()
+        if not self.failed and self.process.exitcode is not None:
+            self.failed=True
+            message='PDF 처리기가 예기치 않게 종료됐어요. 입력 중인 글은 유지했어요. 복사해 보관한 뒤 윤DF를 다시 열어 주세요.'
+            callbacks=list(self.callbacks.values());self.callbacks.clear()
+            for owner,success,error in callbacks:
+                if owner.closed:continue
+                if error:error(message)
+            for owner in tuple(self.controllers):
+                if not owner.closed:
+                    owner._busy=False;owner._render_queue.clear();owner.stateChanged.emit()
+                    owner.liveEditor.generation+=1;owner.liveEditor.timer.stop();owner.liveEditor.resume.stop();owner.liveEditor._pending_font=None
+                    owner.liveEditor._fail(message)
+                    owner.set_status(message)
+            if self.controllers:self.controllers[0].showError.emit(message)
         owners = {entry[0] for entry in self.callbacks.values()}
         for owner in self.retired[:]:
             if owner not in owners:
@@ -63,6 +87,7 @@ class EngineHub(QObject):
         self.pump()
 
     def pump(self):
+        if self.failed:return
         for owner in self.controllers:
             if owner.active and not owner.closed: owner._pump_render()
 
@@ -77,6 +102,9 @@ class EngineHub(QObject):
             self.process.join(timeout=2)
         self.frames.close()
         self.callbacks.clear()
+        # A dead worker cannot drain its input pipe. Do not wait forever for
+        # the queue's feeder to flush abandoned messages during app exit.
+        self.inbox.cancel_join_thread()
         self.inbox.close()
         self.outbox.close()
 
@@ -113,16 +141,19 @@ class Documents(QObject):
     closeApproved = Signal()
     showError = Signal(str)
 
-    def __init__(self, images):
+    def __init__(self, images, library=None):
         super().__init__()
         self.images = images
+        self.library = library
         self.hub = EngineHub()
         self._tabs = []
         self._tab_model = DocumentTabModel(self)
         self._index = -1
         self._closing = False
         self._close_approved = False
+        self._close_all = []
         self._close_queue = []
+        self._close_waited = 0
         self.newTab()
 
     @Property(QObject, notify=activeChanged)
@@ -143,6 +174,14 @@ class Documents(QObject):
                 (Path(b.opening_path).name if getattr(b, "opening_path", "") else "새 문서"),
                 "path": b.document.get("path", getattr(b, "opening_path", "")),
                 "dirty": b.document.get("dirty", False), "busy": b.busy or b.ocrBusy}
+
+    @Slot(str)
+    def openRecent(self, path):
+        if not Path(path).is_file():
+            if self.library: self.library.forget(path)
+            self.showError.emit("파일을 찾지 못했어요. 옮겨졌거나 삭제되었을 수 있어요.\n" + path)
+            return
+        self.openPaths([path])
 
     @Property('QVariantList', notify=tabsChanged)
     def tabs(self): return [self.tab_data(b) for b in self._tabs]
@@ -195,6 +234,22 @@ class Documents(QObject):
         self.activeChanged.emit()
         self.indexChanged.emit()
 
+    @Slot(int, int)
+    def moveTab(self, source, target):
+        """Drag a tab to a new position. The active document stays active."""
+        count = len(self._tabs)
+        if self._closing or not (0 <= source < count and 0 <= target < count) or source == target: return
+        # beginMoveRows wants the destination as an insert-before index.
+        if not self._tab_model.beginMoveRows(QModelIndex(), source, source, QModelIndex(), target + 1 if target > source else target):
+            return
+        active = self._tabs[self._index] if self._index >= 0 else None
+        self._tabs.insert(target, self._tabs.pop(source))
+        self._tab_model.endMoveRows()
+        if active is not None and self._tabs.index(active) != self._index:
+            self._index = self._tabs.index(active)
+            self.indexChanged.emit()
+        self.tabsChanged.emit()
+
     @Slot(int)
     def cycle(self, direction):
         if not self._closing: self.activate((self._index + direction) % len(self._tabs))
@@ -240,7 +295,9 @@ class Documents(QObject):
             self.tabsChanged.emit()
 
     def ask_close(self, b):
-        if b.busy or b.ocrBusy:
+        # OCR never holds a document open: cancelled, nothing is written.
+        if b.ocrBusy: b.cancelOcr()
+        if b.busy:
             self.showError.emit(b.document.get("name", "PDF") + "의 작업을 완료하거나 취소한 뒤 닫아 주세요.")
             return QMessageBox.Cancel
         if not b.document.get("dirty"): return QMessageBox.Discard
@@ -267,6 +324,28 @@ class Documents(QObject):
         if choice == QMessageBox.Save:
             self.save_before_close(b, lambda: self._remove(b), lambda: None)
         else: self._remove(b)
+
+    @Slot()
+    def closeAll(self):
+        """Close every tab but keep the window, asking about each unsaved one.
+        Cancel (or a failed save) stops with the remaining tabs left open."""
+        if self._closing: return
+        self._close_all = list(self._tabs)
+        self._close_all_next()
+
+    def _close_all_next(self):
+        while self._close_all:
+            b = self._close_all.pop(0)
+            if b not in self._tabs: continue
+            choice = self.ask_close(b)
+            if choice == QMessageBox.Cancel:
+                self._close_all = []; return
+            if choice == QMessageBox.Save:
+                def saved(b=b): self._remove(b); self._close_all_next()
+                def failed(): self._close_all = []
+                self.save_before_close(b, saved, failed)
+                return
+            self._remove(b)
 
     def _remove(self, b):
         if b not in self._tabs: return
@@ -301,9 +380,30 @@ class Documents(QObject):
     def mayClose(self):
         if self._close_approved: return True
         if self._closing: return False
-        if any(b.busy or b.ocrBusy for b in self._tabs):
-            self.showError.emit("진행 중인 작업을 완료하거나 취소한 뒤 닫아 주세요.")
+        # Closing is never refused for background work. OCR is cancelled (it has
+        # not changed the document); a short engine task (opening, saving,
+        # applying an edit) is allowed to finish first, then closing continues.
+        for b in self._tabs:
+            if b.ocrBusy: b.cancelOcr()
+        if any(b.busy for b in self._tabs):
+            self._closing = True
+            self.closingChanged.emit()
+            self.activeBridge.set_status("진행 중인 작업을 마무리하고 닫을게요…")
+            self._close_waited = 0
+            QTimer.singleShot(100, self._close_when_idle)
             return False
+        return self._close_documents()
+
+    def _close_when_idle(self):
+        self._close_waited += 1
+        if any(b.busy for b in self._tabs) and self._close_waited < 150:   # up to 15 s
+            QTimer.singleShot(100, self._close_when_idle); return
+        self._closing = False
+        if self._close_documents():
+            self._close_approved = True
+            self.closeApproved.emit()
+
+    def _close_documents(self):
         if not any(b.document.get("dirty") for b in self._tabs): return True
         self._closing = True
         self.closingChanged.emit()

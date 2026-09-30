@@ -15,7 +15,8 @@ Item {
     required property int pageNumber
     required property real pdfWidth
     required property var viewport
-    property var layout: { controller.textTick; return controller.textLayout(pageNumber); }
+    // Hidden layers (editing modes) skip copying the page's character table.
+    property var layout: { controller.textTick; return layer.visible ? controller.textLayout(pageNumber) : ({chars: [], lines: [], links: [], images: [], copyable: false, hasText: false}); }
     property var selection: controller.textSelection
     property real factor: width / pdfWidth
     property int anchor: 0
@@ -89,6 +90,10 @@ Item {
     }
     Canvas {
         id: highlight; anchors.fill: parent
+        // A page-sized canvas costs tens of MB per repaint at high zoom.
+        // Only keep it while this page actually has a selection.
+        visible: layer.selection.page === layer.pageNumber && layer.selection.end > layer.selection.start
+        onVisibleChanged: if(visible) requestPaint()
         onPaint: {
             var ctx = getContext("2d"); ctx.reset();
             if (layer.selection.page !== layer.pageNumber) return;
@@ -156,21 +161,34 @@ Item {
                 controller.selectCharacters(layer.pageNumber,layer.anchor,layer.caretAt(mouse.x/layer.factor,mouse.y/layer.factor));
                 if(layer.markupTool && layer.allowEdits) controller.annotateSelection(layer.markupTool);
             }
-            else if (pressedAnnotation && !layer.markupTool) controller.selectAnnotation(layer.pageNumber,pressedAnnotation.id);
+            // Already on screen: select it and bring its card into view, without scrolling the page.
+            else if (pressedAnnotation && !layer.markupTool) controller.focusAnnotation(layer.pageNumber,pressedAnnotation.id);
             else if (pressedLink && layer.linkAt(mouse.x/layer.factor,mouse.y/layer.factor)) controller.activateLink(pressedLink);
         }
-        onDoubleClicked: function(mouse) { doubleClick=true; if (!pressedLink) layer.selectWord(mouse.x/layer.factor,mouse.y/layer.factor); }
+        onDoubleClicked: function(mouse) {
+            doubleClick=true;
+            // Double-clicking a mark opens its memo, as in Acrobat.
+            if (pressedAnnotation && pressedAnnotation.editable && layer.allowEdits && controller.canAnnotate) { controller.annotateItem(pressedAnnotation); return; }
+            if (!pressedLink) layer.selectWord(mouse.x/layer.factor,mouse.y/layer.factor);
+        }
         onExited: { layer.hoverLink=null; layer.hoverAnnotation=null; }
-        ToolTip.visible: containsMouse && layer.hoverLink !== null && !pressed
-        ToolTip.delay: 650
-        ToolTip.text: !layer.hoverLink ? "" : layer.hoverLink.kind === "uri" ? layer.hoverLink.uri : layer.hoverLink.kind === "page" ? (layer.hoverLink.page+1)+"페이지로 이동" : "문서 링크"
+        // Links show their target; comment marks show who wrote what, next to the pointer.
+        ToolTip {
+            id: pointerTip
+            x: Math.min(pointer.mouseX + 14, pointer.width - width); y: pointer.mouseY + 20
+            delay: 450; font.pixelSize: 12
+            visible: pointer.containsMouse && !pointer.pressed && text.length > 0
+            text: layer.hoverLink ? (layer.hoverLink.kind === "uri" ? layer.hoverLink.uri : layer.hoverLink.kind === "page" ? (layer.hoverLink.page+1)+"페이지로 이동" : "문서 링크")
+                : !layer.hoverAnnotation || !(layer.hoverAnnotation.content || layer.hoverAnnotation.author) ? ""
+                : (layer.hoverAnnotation.author ? layer.hoverAnnotation.author + " · " : "") + (layer.hoverAnnotation.content || layer.hoverAnnotation.label).slice(0,160)
+        }
     }
     Rectangle {
         visible: pointer.pressed && pointer.draggingNote
         x: pointer.notePoint.x*layer.factor; y: pointer.notePoint.y*layer.factor
         width: pointer.pressedAnnotation ? (pointer.pressedAnnotation.rect[2]-pointer.pressedAnnotation.rect[0])*layer.factor : 0
         height: pointer.pressedAnnotation ? (pointer.pressedAnnotation.rect[3]-pointer.pressedAnnotation.rect[1])*layer.factor : 0
-        color: "#88ffd54f"; border.color: "#377e62"; border.width: 2; z: 10
+        color: "#88ffd54f"; border.color: Theme.accent; border.width: 2; z: 10
     }
     Timer {
         interval: 25; repeat: true; running: pointer.pressed && pointer.moved && !pointer.draggingNote
@@ -194,7 +212,16 @@ Item {
             enabled: layer.allowEdits && controller.canAnnotate && !!layer.contextAnnotation && layer.contextAnnotation.editable
             onTriggered: controller.deleteAnnotationAt(layer.contextAnnotation)
         }
-        MenuItem { objectName: "addMemoMenuItem"; text: "각주(메모) 추가"; enabled: layer.allowEdits && controller.canAnnotate; onTriggered: controller.composeComment(layer.pageNumber,layer.contextPoint.x,layer.contextPoint.y) }
+        // On a mark the memo belongs to that mark; on selected text it becomes
+        // a highlight carrying the memo; elsewhere it is a note at the point.
+        MenuItem {
+            objectName: "addMemoMenuItem"
+            readonly property bool onMark: !!layer.contextAnnotation && layer.contextAnnotation.editable
+            text: onMark ? (layer.contextAnnotation.content ? "메모 수정" : "이 표시에 메모 달기")
+                : layer.selection.count>0 && layer.selection.page===layer.pageNumber ? "선택한 글자에 메모 달기" : "여기에 메모 추가"
+            enabled: layer.allowEdits && controller.canAnnotate
+            onTriggered: onMark ? controller.annotateItem(layer.contextAnnotation) : controller.composeComment(layer.pageNumber,layer.contextPoint.x,layer.contextPoint.y)
+        }
         MenuSeparator { }
         MenuItem { objectName: "copyImageMenuItem"; text: "이미지 복사"; visible: layer.contextImage!==null; height: visible ? implicitHeight : 0; onTriggered: controller.exportImage(layer.contextImage,false) }
         MenuItem { objectName: "saveImageMenuItem"; text: "이미지를 파일로 저장…"; visible: layer.contextImage!==null; height: visible ? implicitHeight : 0; onTriggered: controller.exportImage(layer.contextImage,true) }

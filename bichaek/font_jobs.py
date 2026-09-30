@@ -53,11 +53,22 @@ def prepare(payload):
     source = FontSource(payload['snapshot']); result = []
     for name, text in payload['requests'].items():
         try:
-            data = (original_font(source, 0, name, text) if payload['source'] == 'original'
-                    else font_bytes(payload['path']) if payload['path'] else fitz.Font('korea').buffer)
-            if not has_text(data, text): raise ValueError('선택한 글꼴에 필요한 글자가 없어요. 다른 글꼴을 검색해 주세요.')
+            partial = False
+            if payload['source'] == 'original':
+                try: data = original_font(source, 0, name, text)
+                except ValueError:
+                    # No program covers every character. Keep the closest
+                    # original program; the editor shows only the missing
+                    # characters in a fallback font instead of refusing.
+                    data = original_font(source, 0, name, ''); partial = True
+            else:
+                data = font_bytes(payload['path']) if payload['path'] else fitz.Font('korea').buffer
+                if payload['source']=='fallback' and not has_text(data,text):
+                    data=fitz.Font('korea').buffer
+                partial = not has_text(data, text)
             prepared, family = qt_font(data)
-            result.append({'name': name, 'data': prepared, 'family': family, 'error': ''})
+            result.append({'name': name, 'data': prepared, 'family': family, 'error': '', 'partial': partial,
+                           'label':fitz.Font(fontbuffer=data).name})
         except Exception as exc:
             result.append({'name': name, 'data': b'', 'family': '', 'error': str(exc)})
     return {'fonts': result}
@@ -69,10 +80,16 @@ def run_job(payload, timeout=FONT_TIMEOUT):
         request.write_bytes(pickle.dumps(payload, protocol=5))
         args = ([sys.executable, '--yoondf-font-job'] if getattr(sys, 'frozen', False)
                 else [sys.executable, '-m', 'bichaek.font_jobs'])
-        run = subprocess.Popen(args+[str(request), str(response)],
-                cwd=Path(__file__).resolve().parent.parent, stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
+        errors = open(Path(folder)/'stderr.txt', 'wb')
+        try:
+            run = subprocess.Popen(args+[str(request), str(response)],
+                    cwd=Path(__file__).resolve().parent.parent, stdin=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL, stderr=errors,
+                    creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
+        except OSError as exc:
+            errors.close()
+            _log_failure(args, None, str(exc).encode())
+            raise ValueError('글꼴 처리기를 시작하지 못했어요. 오류 로그를 보내 주세요.') from exc
         deadline = time.monotonic()+timeout
         try:
             while run.poll() is None:
@@ -86,11 +103,21 @@ def run_job(payload, timeout=FONT_TIMEOUT):
         finally:
             if run.poll() is None: run.kill()
             run.wait()
+            errors.close()
         if run.returncode or not response.is_file():
+            _log_failure(args, run.returncode, (Path(folder)/'stderr.txt').read_bytes())
             raise ValueError('글꼴 처리기가 종료됐어요. 다른 글꼴을 선택하거나 취소 후 다시 시도해 주세요.')
         result = pickle.loads(response.read_bytes())
         if 'error' in result: raise ValueError(result['error'])
         return result
+
+
+def _log_failure(args, code, stderr):
+    """Keep the helper's own error output; without it a Windows-only failure
+    shows up only as "the font helper stopped"."""
+    from .diagnostics import note
+    note('font helper failed: exit %s, command %r\n%s', code, args,
+         stderr[-4000:].decode('utf-8', 'replace') or '(no error output)')
 
 
 @lru_cache(maxsize=1)

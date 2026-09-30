@@ -51,7 +51,10 @@ def build_lines(editor,cursor):
         if len(chars)>1:
             pos,length,_,_=chars[-2];cursor.setPosition(pos);cursor.setPosition(pos+length,QTextCursor.KeepAnchor)
             trailing=max(trailing,cursor.charFormat().fontLetterSpacing())
-    editor._width=min(editor._width+trailing,editor.target.get('pageWidth',20000)-left)
+    # Qt rounds glyph advances and inherited tracking in fixed-point units.
+    # A same-width replacement at the last position can differ by a fraction
+    # of a point after font-cache changes. Reserve room without moving glyphs.
+    editor._width=min(editor._width+trailing+.25,editor.target.get('pageWidth',20000)-left)
     editor.widthChanged.emit()
     doc.size()
     descents=[block.layout().lineAt(0).descent() for block,line,chars in records]
