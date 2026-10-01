@@ -41,6 +41,24 @@ jobs:
       - name: 앱 화면 시험 (가상 안드로이드)
         run: ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace
 
+      - name: 화면 사진 올리기
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots
+          path: hwp-android/app/build/screens/*.png
+          if-no-files-found: ignore
+
+      - name: 화면 사진 기록에 남기기 (확인용)
+        if: always()
+        run: |
+          for f in app/build/screens/*.png; do
+            [ -f "$f" ] || continue
+            echo "===SCREEN $(basename "$f")"
+            base64 -w 3000 "$f"
+            echo "===END"
+          done
+
       - name: APK 만들기
         run: ./gradlew :app:assembleRelease --no-daemon --stacktrace
 
