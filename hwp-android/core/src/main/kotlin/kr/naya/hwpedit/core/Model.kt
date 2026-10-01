@@ -9,10 +9,10 @@ package kr.naya.hwpedit.core
  * 글자열 안의 특수 문자:
  *   '\n'      문단 구분 (TextFlowBlock.text 에서만 쓰임)
  *   '\t'      탭
- *   ' '  문단 안 줄 바꿈 (한글의 Shift+Enter)
- *   ' '  묶음 빈칸
- *   ' '  고정폭 빈칸
- *   '‑'  하이픈(한글 문서의 하이픈 문자)
+ *   '\u2028'  문단 안 줄 바꿈 (한글의 Shift+Enter)
+ *   '\u00A0'  묶음 빈칸
+ *   '\u2007'  고정폭 빈칸
+ *   '\u2011'  하이픈(한글 문서의 하이픈 문자)
  */
 
 enum class DocFormat(val extension: String, val mimeType: String) {
@@ -21,10 +21,10 @@ enum class DocFormat(val extension: String, val mimeType: String) {
 }
 
 object SpecialChars {
-    const val LINE_BREAK = ' '
-    const val NB_SPACE = ' '
-    const val FW_SPACE = ' '
-    const val HYPHEN = '‑'
+    const val LINE_BREAK = '\u2028'
+    const val NB_SPACE = '\u00A0'
+    const val FW_SPACE = '\u2007'
+    const val HYPHEN = '\u2011'
     const val TAB = '\t'
     const val PARA_BREAK = '\n'
 
@@ -45,8 +45,8 @@ object SpecialChars {
                 }
                 c == '\n' || c == '\t' -> sb.append(c)
                 c < ' ' -> sb.append(' ')
-                c == ' ' -> sb.append('\n')
-                c == '￼' || c == '￾' || c == '￿' -> {}
+                c == '\u2029' -> sb.append('\n')
+                c == '\uFFFC' || c == '\uFFFE' || c == '\uFFFF' -> {}
                 else -> sb.append(c)
             }
             i++

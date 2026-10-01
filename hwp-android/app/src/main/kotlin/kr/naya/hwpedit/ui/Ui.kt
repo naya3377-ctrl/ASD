@@ -75,6 +75,7 @@ fun Context.label(text: CharSequence, sizeSp: Float = 15f, color: Int = Palette.
         setTextColor(color)
         setTextSize(TypedValue.COMPLEX_UNIT_SP, sizeSp)
         if (bold) typeface = Typeface.DEFAULT_BOLD
+        Typo.koreanWordWrap(this)
     }
 
 /** 둥근 단추. primary 면 강조색 바탕. */

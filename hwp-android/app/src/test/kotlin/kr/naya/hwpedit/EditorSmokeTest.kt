@@ -67,6 +67,20 @@ class EditorSmokeTest {
     }
 
     @Test
+    fun characterFormatsDoNotLeakIntoFollowingText() {
+        // sample1.hwpx: 첫 문단 "수학"은 기울임, 둘째 문단은 "수학"(6~8)만 기울임.
+        val activity = openEditor(sampleFile("sample1.hwpx"))
+        val flow = activity.flowViews().first { it.text.toString().contains("우리는") }
+        val e = flow.text
+        fun italicAt(i: Int) = e.getSpans(i, i + 1, android.text.style.StyleSpan::class.java)
+            .any { it.style == android.graphics.Typeface.ITALIC }
+        val at = e.indexOf("우리는")
+        assertFalse("우리는 은 기울임이 아니어야 함", italicAt(at))
+        assertTrue("수학 은 기울임", italicAt(e.indexOf("수학", at)))
+        assertTrue("첫 문단 수학 은 기울임", italicAt(0))
+    }
+
+    @Test
     fun opensAndSavesHwpxWithSoftBreak() {
         val file = sampleFile("sample1.hwpx")
         val activity = openEditor(file)

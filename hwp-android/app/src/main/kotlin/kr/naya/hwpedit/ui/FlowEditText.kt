@@ -85,9 +85,10 @@ class FlowEditText(context: Context, var flowId: Int, var originalText: String) 
         highlightColor = 0x552F6FED
         // 긴 문서에서 입력칸마다 자동완성·맞춤법 검사가 돌면 느려진다.
         importantForAutofill = IMPORTANT_FOR_AUTOFILL_NO
+        Typo.koreanWordWrap(this)
     }
 
-    /** 문서에 저장할 형태의 글(문단 안 줄바꿈은  ). */
+    /** 문서에 저장할 형태의 글(문단 안 줄바꿈은 \u2028). */
     fun modelText(): String = DocText.toModel(text)
 
     fun hasEdits(): Boolean = modelText() != originalText
@@ -95,6 +96,16 @@ class FlowEditText(context: Context, var flowId: Int, var originalText: String) 
     fun clearFindMarks() {
         val e = text ?: return
         for (s in e.getSpans(0, e.length, FindSpan::class.java)) e.removeSpan(s)
+    }
+}
+
+/** 글자 배치 공통 설정. */
+object Typo {
+    /** 한국어를 낱말(어절) 단위로 줄바꿈한다(안드로이드 13 이상). */
+    fun koreanWordWrap(view: android.widget.TextView) {
+        if (android.os.Build.VERSION.SDK_INT >= 33) {
+            view.lineBreakWordStyle = android.graphics.text.LineBreakConfig.LINE_BREAK_WORD_STYLE_PHRASE
+        }
     }
 }
 
@@ -120,17 +131,22 @@ object DocText {
     fun build(flow: TextFlowBlock, ptPx: Float, maxMarginPx: Int): SpannableStringBuilder {
         val sb = SpannableStringBuilder()
         val paraRanges = ArrayList<IntArray>()
+        // 글을 먼저 다 붙이고 나서 모양을 입힌다. 모양 범위 끝이 '뒤에 붙는 글을 품는' 방식이라
+        // 붙이는 도중에 입히면 뒤 문단까지 번진다.
         for ((pi, p) in flow.paragraphs.withIndex()) {
             if (pi > 0) sb.append('\n')
             val start = sb.length
             sb.append(p.text.replace(SpecialChars.LINE_BREAK, '\n'))
+            paraRanges.add(intArrayOf(start, start + p.text.length))
+        }
+        for ((pi, p) in flow.paragraphs.withIndex()) {
+            val start = paraRanges[pi][0]
             for ((i, c) in p.text.withIndex()) {
                 if (c == SpecialChars.LINE_BREAK) {
                     sb.setSpan(SoftBreakSpan(), start + i, start + i + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
                 }
             }
-            for (r in p.runs) applyChar(sb, start + r.start, start + r.end, r.style, ptPx)
-            paraRanges.add(intArrayOf(start, start + p.text.length))
+            for (r in p.runs) applyChar(sb, start + r.start, start + r.end, r.style, ptPx, atParagraphStart = r.start == 0)
         }
         for ((pi, p) in flow.paragraphs.withIndex()) {
             val (start, end0) = paraRanges[pi].let { it[0] to it[1] }
@@ -159,9 +175,13 @@ object DocText {
         return sb
     }
 
-    private fun applyChar(sb: SpannableStringBuilder, start: Int, end: Int, s: CharStyle, ptPx: Float) {
+    /**
+     * 글자 모양을 입힌다. 범위 끝에 친 글은 그 모양을 따른다(앞 글자 모양 잇기).
+     * 문단 첫 글자 모양은 문단 맨 앞에 친 글에도 이어지도록 시작도 포함으로 둔다.
+     */
+    private fun applyChar(sb: SpannableStringBuilder, start: Int, end: Int, s: CharStyle, ptPx: Float, atParagraphStart: Boolean) {
         if (end <= start) return
-        val flag = Spanned.SPAN_EXCLUSIVE_INCLUSIVE
+        val flag = if (atParagraphStart) Spanned.SPAN_INCLUSIVE_INCLUSIVE else Spanned.SPAN_EXCLUSIVE_INCLUSIVE
         val size = s.sizePt.coerceIn(4f, 72f)
         sb.setSpan(AbsoluteSizeSpan((size * ptPx).roundToInt(), false), start, end, flag)
         when {

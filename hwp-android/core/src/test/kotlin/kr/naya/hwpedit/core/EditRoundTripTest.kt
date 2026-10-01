@@ -106,7 +106,7 @@ class EditRoundTripTest {
             val original = TestSupport.sample(name)
             val flow = flowsOf(open(original)).first()
             val text = "탭\t다음${SpecialChars.LINE_BREAK}줄바꿈 묶음${SpecialChars.NB_SPACE}빈칸 " +
-                "고정${SpecialChars.FW_SPACE}폭 하이픈${SpecialChars.HYPHEN}끝 😀 이모지"
+                "고정${SpecialChars.FW_SPACE}폭 하이픈${SpecialChars.HYPHEN}끝 \uD83D\uDE00 이모지"
             val saved = HwpDocuments.save(original, mapOf(flow.flowId to text))
             TestSupport.output("special-$name", saved)
             val after = flowsOf(open(saved)).first()
